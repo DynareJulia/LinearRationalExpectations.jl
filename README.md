@@ -1,3 +1,5 @@
+WORK IN PROGRESS
+
 ``LinearRationalExpectations`` provides tools to solve economic linear
 rational expectations models.
 
