@@ -275,15 +275,16 @@ function first_order_solver!(results::ResultsPerturbationWs,
                              jacobian::Matrix,
                              options,
                              ws::LinearRationalExpectationsWs)
+    println(options)
     if algo == "CR"
-        cyclic_reduction!(ws.x, ws.c, ws.b, ws.a, ws.solver_ws, options.cycle_reduction.tol, 100)
+        cyclic_reduction!(ws.x, ws.c, ws.b, ws.a, ws.solver_ws, options["cyclic_reduction"]["tol"], 100)
         for i = 1:ws.backward_nbr
             for j = 1:(ws.endogenous_nbr - ws.static_nbr)
                 results.g[1][ws.dynamic_indices[j],i] = ws.x[j, ws.backward_indices_d[i]]
             end
         end
     elseif algo == "GS"
-        gs_solver!(ws.solver_ws, ws.d, ws.e, ws.backward_nbr, options.generalized_schur.criterium)
+        gs_solver!(ws.solver_ws, ws.d, ws.e, ws.backward_nbr, options["generalized_schur"]["criterium"])
         results.gs[1] = ws.solver_ws.g2
         for i = 1:ws.backward_nbr
             for j = 1:ws.backward_nbr
