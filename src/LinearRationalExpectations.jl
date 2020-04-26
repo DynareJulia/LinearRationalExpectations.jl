@@ -1,12 +1,10 @@
 module LinearRationalExpectations
 
-using Dynare
 using LinearAlgebra
 using FastLapackInterface
 using FastLapackInterface.LinSolveAlgo
 using FastLapackInterface.QrAlgo
 using PolynomialMatrixEquations
-using Perturbation: ResultsPerturbationWs
 #using SolveEyePlusMinusAkronB: EyePlusAtKronBWs, generalized_sylvester_solver!
 
 using LinearAlgebra.BLAS
