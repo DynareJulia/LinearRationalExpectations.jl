@@ -1,10 +1,11 @@
-using Dynare
+#=
+TO BE FIXED without reference to Dynare.jl
+
 using FastLapackInterface
 using FastLapackInterface.LinSolveAlgo
 using LinearAlgebra
 using LinearRationalExpectations
 using MAT
-using Perturbation: ResultsPerturbationWs
 using Test
 
 struct Cycle_Reduction
@@ -29,6 +30,7 @@ options = Options(cr_opt,gs_opt)
 file = matopen("models/example1/example1_results.mat")
 oo_ = read(file,"oo_")
 
+#=
 function test_model(endo_nbr,lead_lag_incidence, param_nbr)
     m = Model("models/example1/example1", endo_nbr,lead_lag_incidence, 2, 0, 0, param_nbr)
 
@@ -42,6 +44,7 @@ function test_model(endo_nbr,lead_lag_incidence, param_nbr)
     @test m.colsUD == 3:3
     @test m.colsUE == 6:6
 end
+=#
 
 function test_getDE(endo_nbr, lead_lag_incidence, jacobian, param_nbr)
     m = Model("models/example1/example1", endo_nbr,lead_lag_incidence, 2, 0, 0, param_nbr)
@@ -175,4 +178,5 @@ solve_large_model(n*6,lli2,options,"CR",jacobian2)
 println("OK")
 =#
 
+=#
 
