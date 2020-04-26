@@ -11,7 +11,7 @@ using Perturbation: ResultsPerturbationWs
 
 using LinearAlgebra.BLAS
 
-export LinearRationalExpectationsWs, first_order_solver!
+export LinearRationalExpectationsWs, LinearRationalExpectationsResults, first_order_solver!
 
 struct LinearRationalExpectationsWs
     algo::String
