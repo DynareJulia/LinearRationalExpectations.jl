@@ -161,6 +161,25 @@ struct LinearRationalExpectationsWs
     end
 end
 
+struct LinearRationalExpectationResults
+    g1::Matrix{Float64}  # full approximation
+    gs1::Matrix{Float64} # state transition matrices
+    g1_1::SubArray # solution first order derivatives w.r. to state variables
+    g1_2::SubArray # solution first order derivatives w.r. to current exogenous variables
+#    g1_3::SubArray # solution first order derivatives w.r. to lagged exogenous variables
+    
+    function LinearRationalExpectationsResults(order::Int64, endogenous_nbr::Int64, exogenous_nbr::Int64, backward_nbr::Int64)
+        nstate = backward_nbr + exogenous_nbr 
+        g1 =  [zeros(endogenous_nbr,(nstate + 1)^k) for k = 1:order]
+        gs1 = [zeros(backward_nbr,backward_nbr^k) for k = 1:order]
+        g1_1 = view(g[1], :, 1:backward_nbr)
+        g1_2 = view(g[1], :, backward_nbr .+ (1:exogenous_nbr))
+#        g1_3 = view(g[1], :, backward_nbr + exogenous_nbr .+ lagged_exogenous_nbr)
+#        new(g, gs, g1_1, g1_2, g1_3, AGplusB, AGplusB_linsolve_ws)
+        new(g1, gs1, g1_1, g1_2)
+    end
+end
+
 """
 remove_static! removes a subset of variables (columns) and rows by QR decomposition
 jacobian: on entry jacobian matrix of the original model
@@ -181,7 +200,7 @@ end
 Computes the solution for the static variables:
 G_y,static = -B_s,s^{-1}(A_s*Gy,fwrd*Gs + B_s,d*Gy,dynamic + C_s) 
 """ 
-function add_static!(results::ResultsPerturbationWs,
+function add_static!(results::LinearRationalExpectationsResults,
                      jacobian::Matrix{Float64},
                      ws::LinearRationalExpectationsWs)
     # static rows are at the top of the QR transformed Jacobian matrix
@@ -201,12 +220,12 @@ function add_static!(results::ResultsPerturbationWs,
     # ws.temp2 = B_s,d*Gy.dynamic + C_s
     mul!(ws.temp2, ws.b11, ws.temp4, 1.0, 1.0)
     mul!(ws.temp6, ws.temp1, ws.temp3)
-    mul!(ws.temp2, ws.temp6, results.gs[1], 1.0, -1.0)
+    mul!(ws.temp2, ws.temp6, results.gs1, 1.0, -1.0)
     # ws.temp3 = S\ws.temp3
     linsolve_core!(ws.b10, ws.temp2, ws.linsolve_static_ws)
     for i = 1:ws.backward_nbr
         for j=1:ws.static_nbr
-            results.g[1][ws.static_indices[j],i] = ws.temp2[j,i]
+            results.g1[ws.static_indices[j],i] = ws.temp2[j,i]
         end
     end
 end
@@ -275,28 +294,24 @@ function first_order_solver!(results::ResultsPerturbationWs,
                              jacobian::Matrix,
                              options,
                              ws::LinearRationalExpectationsWs)
-    println(options)
     if algo == "CR"
         cyclic_reduction!(ws.x, ws.c, ws.b, ws.a, ws.solver_ws, options["cyclic_reduction"]["tol"], 100)
         for i = 1:ws.backward_nbr
             for j = 1:(ws.endogenous_nbr - ws.static_nbr)
-                results.g[1][ws.dynamic_indices[j],i] = ws.x[j, ws.backward_indices_d[i]]
+                results.g1[ws.dynamic_indices[j],i] = ws.x[j, ws.backward_indices_d[i]]
             end
         end
     elseif algo == "GS"
         gs_solver!(ws.solver_ws, ws.d, ws.e, ws.backward_nbr, options["generalized_schur"]["criterium"])
-        results.gs[1] = ws.solver_ws.g2
+        results.gs1 = ws.solver_ws.g2
         for i = 1:ws.backward_nbr
             for j = 1:ws.backward_nbr
                 x = ws.solver_ws.g1[j,i]
-                results.g[1][ws.backward_indices[j],i] = x
+                results.g1[ws.backward_indices[j],i] = x
             end
             for j = 1:(ws.forward_nbr - ws.both_nbr)
-                results.g[1][ws.purely_forward_indices[j],i] = ws.solver_ws.g2[j,i]
+                results.g1[ws.purely_forward_indices[j],i] = ws.solver_ws.g2[j,i]
             end
-            #for j = 1:ws.both_nbr
-            #    results.g[1][ws.both_indices[j],i] = ws.solver_ws.g2[model.n_fwrd+j,i]
-            #end
         end
     else
         error("Algorithm $algo not recognized")
