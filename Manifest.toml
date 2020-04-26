@@ -1,0 +1,24 @@
+# This file is machine-generated - editing it directly is not advised
+
+[[FastLapackInterface]]
+deps = ["LinearAlgebra"]
+git-tree-sha1 = "924b02d08308717e0a71be06f23441fa2375ebf2"
+repo-rev = "master"
+repo-url = "https://git.dynare.org/julia-packages/fastlapackinterface.jl.git"
+uuid = "29a986be-02c6-4525-aec4-84b980013641"
+version = "0.1.0"
+
+[[Libdl]]
+uuid = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
+
+[[LinearAlgebra]]
+deps = ["Libdl"]
+uuid = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+
+[[PolynomialMatrixEquations]]
+deps = ["FastLapackInterface", "LinearAlgebra"]
+git-tree-sha1 = "2dff425d84418003dee3d5fa5286b5cd965fa98e"
+repo-rev = "master"
+repo-url = "https://git.dynare.org/julia-packages/polynomialmatrixequations.jl.git"
+uuid = "4f9d485d-518f-41ed-81c8-372cd804c93b"
+version = "0.1.0"
