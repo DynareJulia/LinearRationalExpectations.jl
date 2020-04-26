@@ -159,7 +159,7 @@ struct LinearRationalExpectationsWs
     end
 end
 
-struct LinearRationalExpectationResults
+struct LinearRationalExpectationsResults
     g1::Matrix{Float64}  # full approximation
     gs1::Matrix{Float64} # state transition matrices
     g1_1::SubArray # solution first order derivatives w.r. to state variables
@@ -265,7 +265,7 @@ function make_lu_AGplusB!(AGplusB, A, G, B, ws)
     LinSolveAlgo.lu!(AGplusB, ws.AGplusB_linsolve_ws)
 end
 
-function solve_for_derivatives_with_respect_to_shocks!(results::ResultsPerturbationWs, jacobian::AbstractMatrix, ws::LinearRationalExpectationsWs)
+function solve_for_derivatives_with_respect_to_shocks!(results::LinearRationalExpectationsResults, jacobian::AbstractMatrix, ws::LinearRationalExpectationsWs)
     #=
     if model.lagged_exogenous_nbr > 0
         f6 = view(jacobian,:,model.i_lagged_exogenous)
@@ -287,7 +287,7 @@ function solve_for_derivatives_with_respect_to_shocks!(results::ResultsPerturbat
     end
 end
 
-function first_order_solver!(results::ResultsPerturbationWs,
+function first_order_solver!(results::LinearRationalExpectationsResults,
                              algo::String,
                              jacobian::Matrix,
                              options,
