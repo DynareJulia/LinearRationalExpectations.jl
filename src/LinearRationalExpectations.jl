@@ -168,8 +168,8 @@ struct LinearRationalExpectationsResults
     
     function LinearRationalExpectationsResults(order::Int64, endogenous_nbr::Int64, exogenous_nbr::Int64, backward_nbr::Int64)
         nstate = backward_nbr + exogenous_nbr 
-        g1 =  [zeros(endogenous_nbr,(nstate + 1)^k) for k = 1:order]
-        gs1 = [zeros(backward_nbr,backward_nbr^k) for k = 1:order]
+        g1 =  zeros(endogenous_nbr,(nstate + 1))
+        gs1 = zeros(backward_nbr,backward_nbr)
         g1_1 = view(g1, :, 1:backward_nbr)
         g1_2 = view(g1, :, backward_nbr .+ (1:exogenous_nbr))
 #        g1_3 = view(g[1], :, backward_nbr + exogenous_nbr .+ lagged_exogenous_nbr)
