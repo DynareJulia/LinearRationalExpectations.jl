@@ -135,7 +135,8 @@ struct LinearRationalExpectationsWs
         k2 = findall(in(current_indices), purely_forward_indices)
         icolsE = [1:backward_nbr; backward_nbr .+ k2]
         jcolsE = [1:backward_nbr; backward_nbr .+
-                  current_indices[findall(in(purely_forward_indices), current_indices)]]
+                  current_indices[findall(in(current_indices), purely_forward_indices)]]
+#                  current_indices[findall(in(purely_forward_indices), current_indices)]]
         colsUD = findall(in(forward_indices), backward_indices)
         colsUE = backward_nbr .+ findall(in(backward_indices), forward_indices)
         linsolve_static_ws = LinSolveWs(static_nbr)
