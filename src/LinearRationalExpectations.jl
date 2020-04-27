@@ -301,7 +301,7 @@ function first_order_solver!(results::LinearRationalExpectationsResults,
         end
     elseif algo == "GS"
         gs_solver!(ws.solver_ws, ws.d, ws.e, ws.backward_nbr, options["generalized_schur"]["criterium"])
-        results.gs1 = ws.solver_ws.g2
+        results.gs1 .= ws.solver_ws.g2
         for i = 1:ws.backward_nbr
             for j = 1:ws.backward_nbr
                 x = ws.solver_ws.g1[j,i]
