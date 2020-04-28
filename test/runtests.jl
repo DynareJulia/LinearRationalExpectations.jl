@@ -1,3 +1,30 @@
+using LinearRationalExpectations
+using Test
+
+#=
+Test 1:
+Consider the following lead lag incidence matrix:
+ 0   1  2  3  0   4   0
+ 5   6  7  8  9  10  11
+ 0  12  0  0  0   0  13
+=#
+
+ws = LinearRationalExpectationsWs("GS",
+                                  7, # endogenous_nbr,
+                                  2, #exogenous_nbr,
+                                  0, #exogenous_deterministic_nbr,
+                                  [2, 7], #forward indices
+                                  collect(1:7), #current indices
+                                  [2, 3, 4, 6], #backward indices
+                                  [2], # both indices
+                                  [5], # static indices
+                                  )
+@test ws.icolsD == 1:6
+@test ws.jcolsD == [6, 7, 8, 10, 12, 13]
+@test ws.icolsE == [1, 2, 3, 4, 6]
+@test ws.jcolsE == [1, 2, 3, 4, 11]
+
+
 #=
 TO BE FIXED without reference to Dynare.jl
 
