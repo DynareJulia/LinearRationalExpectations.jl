@@ -311,7 +311,8 @@ function first_order_solver!(results::LinearRationalExpectationsResults,
                 results.g1[ws.backward_indices[j],i] = x
             end
             for j = 1:(ws.forward_nbr - ws.both_nbr)
-                results.g1[ws.purely_forward_indices[j],i] = ws.solver_ws.g2[j,i]
+                results.g1[ws.purely_forward_indices[j],i] =
+                    ws.solver_ws.g2[ws.icolsE[ws.backward + j],i]
             end
         end
     else
