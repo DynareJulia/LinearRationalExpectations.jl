@@ -295,13 +295,16 @@ function first_order_solver!(results::LinearRationalExpectationsResults,
     if algo == "CR"
         cyclic_reduction!(ws.x, ws.c, ws.b, ws.a, ws.solver_ws, options["cyclic_reduction"]["tol"], 100)
         for i = 1:ws.backward_nbr
+            for j = 1:ws.backwar_nbr
+                results.gs1[j, i] = ws.x[ws.backward_indices_d[j], ws.backward_indices_d[i]]
+            end
             for j = 1:(ws.endogenous_nbr - ws.static_nbr)
                 results.g1[ws.dynamic_indices[j],i] = ws.x[j, ws.backward_indices_d[i]]
             end
         end
     elseif algo == "GS"
         gs_solver!(ws.solver_ws, ws.d, ws.e, ws.backward_nbr, options["generalized_schur"]["criterium"])
-        results.gs1 .= ws.solver_ws.g2
+        results.gs1 .= ws.solver_ws.g1
         for i = 1:ws.backward_nbr
             for j = 1:ws.backward_nbr
                 x = ws.solver_ws.g1[j,i]
