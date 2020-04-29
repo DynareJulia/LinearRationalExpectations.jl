@@ -295,7 +295,7 @@ function first_order_solver!(results::LinearRationalExpectationsResults,
     if algo == "CR"
         cyclic_reduction!(ws.x, ws.c, ws.b, ws.a, ws.solver_ws, options["cyclic_reduction"]["tol"], 100)
         for i = 1:ws.backward_nbr
-            for j = 1:ws.backwar_nbr
+            for j = 1:ws.backward_nbr
                 results.gs1[j, i] = ws.x[ws.backward_indices_d[j], ws.backward_indices_d[i]]
             end
             for j = 1:(ws.endogenous_nbr - ws.static_nbr)
