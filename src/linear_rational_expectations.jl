@@ -217,6 +217,8 @@ function add_static!(results::LinearRationalExpectationsResults,
     mul!(ws.temp2, ws.temp6, results.gs1, 1.0, -1.0)
     # ws.temp3 = S\ws.temp3
     linsolve_core!(ws.b10, ws.temp2, ws.linsolve_static_ws)
+    println("ws.temp2")
+    display(ws.temp2)
     for i = 1:ws.backward_nbr
         for j=1:ws.static_nbr
             results.g1[ws.static_indices[j],i] = ws.temp2[j,i]
