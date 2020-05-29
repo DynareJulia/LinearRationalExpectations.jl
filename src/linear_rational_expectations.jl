@@ -214,7 +214,7 @@ function add_static!(results::LinearRationalExpectationsResults,
     # ws.temp2 = B_s,d*Gy.dynamic + C_s
     mul!(ws.temp2, ws.b11, ws.temp4, 1.0, 1.0)
     mul!(ws.temp6, ws.temp1, ws.temp3)
-    mul!(ws.temp2, ws.temp6, results.gs1, 1.0, -1.0)
+    mul!(ws.temp2, ws.temp6, results.gs1, -1.0, -1.0)
     # ws.temp3 = S\ws.temp3
     linsolve_core!(ws.b10, ws.temp2, ws.linsolve_static_ws)
     println("ws.temp2")
