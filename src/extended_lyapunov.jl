@@ -10,7 +10,7 @@ struct LyapdWs
     BB::Matrix{Float64}
     temp1::Matrix{Float64}
     XX::Vector{Float64}
-    unstable_variables::Vector{Bool}
+    nonstationary_variables::Vector{Bool}
     dgees_ws::DgeesWs
     linsolve_ws1::LinSolveWs
     linsolve_ws2::LinSolveWs
@@ -21,11 +21,11 @@ struct LyapdWs
         BB = similar(AA)
         temp1 = Matrix{Float64}(undef, n, n)
         XX = Vector{Float64}(undef, 2*n)
-        unstable_variables = Vector{Bool}(undef, n)
+        nonstationary_variables = Vector{Bool}(undef, n)
         dgees_ws = DgeesWs(n)
         linsolve_ws1 = LinSolveWs(n)
         linsolve_ws2 = LinSolveWs(2*n)
-        new(AA, AAtemp, AA2, BB, temp1, XX, unstable_variables,
+        new(AA, AAtemp, AA2, BB, temp1, XX, nonstationary_variables,
             dgees_ws, linsolve_ws1, linsolve_ws2)
     end
 end
@@ -96,18 +96,17 @@ function extended_lyapd!(Σ, A, B, ws)
     n = size(A, 1)
     copy!(ws.AA, A)
     dgees!(ws.dgees_ws, ws.AA, >, 1-1e-6)
-    
-    mul!(ws.temp1, ws.dgees_ws.vs', B)
+    mul!(ws.temp1, transpose(ws.dgees_ws.vs), B)
     mul!(ws.BB, ws.temp1, ws.dgees_ws.vs)
 
-    fill!(ws.unstable_variables, false)
+    fill!(ws.nonstationary_variables, false)
     rowu = 1
     while rowu <= n
         if rowu == n || ws.AA[rowu + 1, rowu ] == 0
             if abs(ws.AA[rowu, rowu]) > 1-1e-6
                 for i = 1:n
                     if abs(ws.dgees_ws.vs[i, rowu]) > 1e-10
-                        ws.unstable_variables[i] = true
+                        ws.nonstationary_variables[i] = true
                     end
                 end
             else
@@ -118,12 +117,12 @@ function extended_lyapd!(Σ, A, B, ws)
             if ws.AA[rowu, rowu]*ws.AA[rowu,rowu] + ws.AA[rowu + 1, rowu]*ws.AA[rowu, rowu + 1] > 1-2e-6
                 for i = 1:n
                     if abs(ws.dgees_ws.vs[i, rowu]) > 1e-10
-                        ws.unstable_variables[i] = true
+                        ws.nonstationary_variables[i] = true
                     end
                 end
                 for i = 1:n
                     if abs(ws.dgees_ws.vs[i, rowu + 1]) > 1e-10
-                        ws.unstable_variables[i] = true
+                        ws.nonstationary_variables[i] = true
                     end
                 end
             else
@@ -175,14 +174,14 @@ function extended_lyapd!(Σ, A, B, ws)
 
     if rowu > 1
         for i = 1:n
-            if  ws.unstable_variables[i]
+            if  ws.nonstationary_variables[i]
                 for j = i:n
                     Σ[j, i] = NaN
                     Σ[i, j] = NaN                    
                 end
             else
                 for j = i:n
-                    if  ws.unstable_variables[j]
+                    if  ws.nonstationary_variables[j]
                         Σ[j, i] = NaN
                         Σ[i, j] = NaN
                     end
