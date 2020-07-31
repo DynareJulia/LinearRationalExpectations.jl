@@ -36,9 +36,8 @@ end
 
 for i = 1:100
     s = Int64(floor(1000*rand()))
-    @show s
     Random.seed!(s)
-    n = 5
+    local n = 5
     X1 = randn(n, n)
     X = X1'*X1
     A = randn(n, n)
@@ -56,7 +55,7 @@ for i = 1:100
     s = Int64(floor(1000*rand()))
     @show s
     Random.seed!(s)
-    n = 2
+    local n = 2
     X1 = randn(n, n)
     X = X1'*X1
     A = randn(n, n)
@@ -68,6 +67,9 @@ for i = 1:100
     AA = vcat(hcat([ 1.0 -0.5 0; 0 1.0 0], randn(m, n)),
               [1 -1 0 0 0],
               hcat(zeros(n, m+1), A))
+    if abs(det(AA))  < 1e-12
+        continue
+    end
     B = X - A*X*A'
     BB = vcat(hcat(I(m), zeros(m, n+1)),
               [0 0 0.2 0 0],

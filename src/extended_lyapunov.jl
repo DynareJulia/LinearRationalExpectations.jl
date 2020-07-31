@@ -133,42 +133,8 @@ function extended_lyapd!(Σ, A, B, ws)
         end
     end
 
-    fill!(Σ, 0.0)
-    row = n
-    while row >= rowu
-        if row == 1 || ws.AA[row, row - 1] == 0
-            solve_one_row!(Σ, ws.AA, ws.BB, n, row, ws)
-            vB = view(ws.BB, 1:row - 1, 1:row - 1)
-            vtemp = view(ws.temp1, 1:row - 1, 1)
-            vΣ = view(Σ, 1:row -1 , row)
-            vA = view(ws.AA, 1:row - 1, 1:row - 1)
-            mul!(vtemp, vA, vΣ)
-            vA = view(ws.AA, 1:row - 1, row)
-            mul!(vB, vtemp, vA', 1.0, 1.0)
-            vΣ = view(Σ, 1:row, row)
-            vA = view(ws.AA, 1:row - 1, 1:row)
-            mul!(vtemp, vA, vΣ)
-            vA = view(ws.AA, 1:row - 1, row)
-            vB .= vB .+ vA.*vtemp'
-            row -= 1
-        else
-            solve_two_rows!(Σ, ws.AA, ws.BB, n, row, ws)
-            vB = view(ws.BB, 1:row - 2, 1:row - 2)
-            vtemp = view(ws.temp1, 1:row - 2, 1:2)
-            vΣ = view(Σ, 1:row - 2, row - 1:row)
-            vA = view(ws.AA, 1:row - 2, 1:row - 2)
-            mul!(vtemp, vA, vΣ)
-            vA = view(ws.AA, 1:row - 2, row - 1:row)
-            mul!(vB, vtemp, vA', 1.0, 1.0)
-            vΣ = view(Σ, 1:row, row - 1:row)
-            vA = view(ws.AA, 1:row - 2, 1:row)
-            mul!(vtemp, vA, vΣ)
-            vA = view(ws.AA, 1:row - 2, row - 1:row)
-            mul!(vB, vA, vtemp', 1.0, 1.0)
-            row -= 2
-        end
-    end
-
+    extended_lyapd_core!(Σ, ws.AA, ws.BB, ws)
+    
     mul!(ws.temp1, ws.dgees_ws.vs, Σ)
     mul!(Σ, ws.temp1, ws.dgees_ws.vs')
 
@@ -191,3 +157,42 @@ function extended_lyapd!(Σ, A, B, ws)
     end
 end
 
+function extended_lyapd_core!(Σ, A, B, ws)
+    fill!(Σ, 0.0)
+    n = size(A, 1)
+    row = n
+    while row >= 1
+        if row == 1 || A[row, row - 1] == 0
+            solve_one_row!(Σ, A, B, n, row, ws)
+            vB = view(B, 1:row - 1, 1:row - 1)
+            vtemp = view(ws.temp1, 1:row - 1, 1)
+            vΣ = view(Σ, 1:row -1 , row)
+            vA = view(A, 1:row - 1, 1:row - 1)
+            mul!(vtemp, vA, vΣ)
+            vA = view(A, 1:row - 1, row)
+            mul!(vB, vtemp, vA', 1.0, 1.0)
+            vΣ = view(Σ, 1:row, row)
+            vA = view(A, 1:row - 1, 1:row)
+            mul!(vtemp, vA, vΣ)
+            vA = view(A, 1:row - 1, row)
+            vB .= vB .+ vA.*vtemp'
+            row -= 1
+        else
+            solve_two_rows!(Σ, A, B, n, row, ws)
+            vB = view(B, 1:row - 2, 1:row - 2)
+            vtemp = view(ws.temp1, 1:row - 2, 1:2)
+            vΣ = view(Σ, 1:row - 2, row - 1:row)
+            vA = view(A, 1:row - 2, 1:row - 2)
+            mul!(vtemp, vA, vΣ)
+            vA = view(A, 1:row - 2, row - 1:row)
+            mul!(vB, vtemp, vA', 1.0, 1.0)
+            vΣ = view(Σ, 1:row, row - 1:row)
+            vA = view(A, 1:row - 2, 1:row)
+            mul!(vtemp, vA, vΣ)
+            vA = view(A, 1:row - 2, row - 1:row)
+            mul!(vB, vA, vtemp', 1.0, 1.0)
+            row -= 2
+        end
+    end
+end
+                                 
