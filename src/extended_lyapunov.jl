@@ -11,6 +11,7 @@ struct LyapdWs
     temp1::Matrix{Float64}
     XX::Vector{Float64}
     nonstationary_variables::Vector{Bool}
+    nonstationary_trends::Vector{Bool}
     dgees_ws::DgeesWs
     linsolve_ws1::LinSolveWs
     linsolve_ws2::LinSolveWs
@@ -22,11 +23,13 @@ struct LyapdWs
         temp1 = Matrix{Float64}(undef, n, n)
         XX = Vector{Float64}(undef, 2*n)
         nonstationary_variables = Vector{Bool}(undef, n)
+        nonstationary_trends = Vector{Bool}(undef, n)
         dgees_ws = DgeesWs(n)
         linsolve_ws1 = LinSolveWs(n)
         linsolve_ws2 = LinSolveWs(2*n)
         new(AA, AAtemp, AA2, BB, temp1, XX, nonstationary_variables,
-            dgees_ws, linsolve_ws1, linsolve_ws2)
+            nonstationary_trends, dgees_ws, linsolve_ws1,
+            linsolve_ws2)
     end
 end
 
@@ -99,58 +102,32 @@ function extended_lyapd!(Σ, A, B, ws)
     mul!(ws.temp1, transpose(ws.dgees_ws.vs), B)
     mul!(ws.BB, ws.temp1, ws.dgees_ws.vs)
 
-    fill!(ws.nonstationary_variables, false)
-    rowu = 1
-    while rowu <= n
-        if rowu == n || ws.AA[rowu + 1, rowu ] == 0
-            if abs(ws.AA[rowu, rowu]) > 1-1e-6
-                for i = 1:n
-                    if abs(ws.dgees_ws.vs[i, rowu]) > 1e-10
-                        ws.nonstationary_variables[i] = true
-                    end
-                end
-            else
-                break
-            end
-            rowu += 1
-        else
-            if ws.AA[rowu, rowu]*ws.AA[rowu,rowu] + ws.AA[rowu + 1, rowu]*ws.AA[rowu, rowu + 1] > 1-2e-6
-                for i = 1:n
-                    if abs(ws.dgees_ws.vs[i, rowu]) > 1e-10
-                        ws.nonstationary_variables[i] = true
-                    end
-                end
-                for i = 1:n
-                    if abs(ws.dgees_ws.vs[i, rowu + 1]) > 1e-10
-                        ws.nonstationary_variables[i] = true
-                    end
-                end
-            else
-                break
-            end
-            rowu += 2
-                
-        end
-    end
-
     extended_lyapd_core!(Σ, ws.AA, ws.BB, ws)
     
     mul!(ws.temp1, ws.dgees_ws.vs, Σ)
     mul!(Σ, ws.temp1, ws.dgees_ws.vs')
 
-    if rowu > 1
-        for i = 1:n
-            if  ws.nonstationary_variables[i]
-                for j = i:n
-                    Σ[j, i] = NaN
-                    Σ[i, j] = NaN                    
+    for i = 1:n
+        if ws.nonstationary_trends[i]
+            for j = 1:n
+                if abs(ws.dgees_ws.vs[j, i]) > 1e-10
+                    ws.nonstationary_variables[j] = true
                 end
-            else
-                for j = i:n
-                    if  ws.nonstationary_variables[j]
-                        Σ[j, i] = NaN
-                        Σ[i, j] = NaN
-                    end
+            end
+        end
+    end
+    
+    for i = 1:n
+        if  ws.nonstationary_variables[i]
+            for j = i:n
+                Σ[j, i] = NaN
+                Σ[i, j] = NaN                    
+            end
+        else
+            for j = i:n
+                if  ws.nonstationary_variables[j]
+                    Σ[j, i] = NaN
+                    Σ[i, j] = NaN
                 end
             end
         end
@@ -159,38 +136,49 @@ end
 
 function extended_lyapd_core!(Σ, A, B, ws)
     fill!(Σ, 0.0)
+    fill!(ws.nonstationary_variables, false)
     n = size(A, 1)
     row = n
     while row >= 1
         if row == 1 || A[row, row - 1] == 0
-            solve_one_row!(Σ, A, B, n, row, ws)
-            vB = view(B, 1:row - 1, 1:row - 1)
-            vtemp = view(ws.temp1, 1:row - 1, 1)
-            vΣ = view(Σ, 1:row -1 , row)
-            vA = view(A, 1:row - 1, 1:row - 1)
-            mul!(vtemp, vA, vΣ)
-            vA = view(A, 1:row - 1, row)
-            mul!(vB, vtemp, vA', 1.0, 1.0)
-            vΣ = view(Σ, 1:row, row)
-            vA = view(A, 1:row - 1, 1:row)
-            mul!(vtemp, vA, vΣ)
-            vA = view(A, 1:row - 1, row)
-            vB .= vB .+ vA.*vtemp'
+            if A[row, row] > 1 - 1e-6
+                ws.nonstationary_trends[row] = true
+            else 
+                solve_one_row!(Σ, A, B, n, row, ws)
+                vB = view(B, 1:row - 1, 1:row - 1)
+                vtemp = view(ws.temp1, 1:row - 1, 1)
+                vΣ = view(Σ, 1:row -1 , row)
+                vA = view(A, 1:row - 1, 1:row - 1)
+                mul!(vtemp, vA, vΣ)
+                vA = view(A, 1:row - 1, row)
+                mul!(vB, vtemp, vA', 1.0, 1.0)
+                vΣ = view(Σ, 1:row, row)
+                vA = view(A, 1:row - 1, 1:row)
+                mul!(vtemp, vA, vΣ)
+                vA = view(A, 1:row - 1, row)
+                vB .= vB .+ vA.*vtemp'
+            end
             row -= 1
         else
-            solve_two_rows!(Σ, A, B, n, row, ws)
-            vB = view(B, 1:row - 2, 1:row - 2)
-            vtemp = view(ws.temp1, 1:row - 2, 1:2)
-            vΣ = view(Σ, 1:row - 2, row - 1:row)
-            vA = view(A, 1:row - 2, 1:row - 2)
-            mul!(vtemp, vA, vΣ)
-            vA = view(A, 1:row - 2, row - 1:row)
-            mul!(vB, vtemp, vA', 1.0, 1.0)
-            vΣ = view(Σ, 1:row, row - 1:row)
-            vA = view(A, 1:row - 2, 1:row)
-            mul!(vtemp, vA, vΣ)
-            vA = view(A, 1:row - 2, row - 1:row)
-            mul!(vB, vA, vtemp', 1.0, 1.0)
+            a = A[row, row]
+            if a*a + A[row, row - 1]*A[row - 1, row] > 1 - 2e-6
+                ws.nonstationary_trends[row] = true
+                ws.nonstationary_trends[row - 1] = true
+            else 
+                solve_two_rows!(Σ, A, B, n, row, ws)
+                vB = view(B, 1:row - 2, 1:row - 2)
+                vtemp = view(ws.temp1, 1:row - 2, 1:2)
+                vΣ = view(Σ, 1:row - 2, row - 1:row)
+                vA = view(A, 1:row - 2, 1:row - 2)
+                mul!(vtemp, vA, vΣ)
+                vA = view(A, 1:row - 2, row - 1:row)
+                mul!(vB, vtemp, vA', 1.0, 1.0)
+                vΣ = view(Σ, 1:row, row - 1:row)
+                vA = view(A, 1:row - 2, 1:row)
+                mul!(vtemp, vA, vΣ)
+                vA = view(A, 1:row - 2, row - 1:row)
+                mul!(vB, vA, vtemp', 1.0, 1.0)
+            end
             row -= 2
         end
     end
