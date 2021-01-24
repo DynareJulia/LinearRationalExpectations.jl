@@ -40,11 +40,13 @@ for i = 1:100
     local n = 5
     X1 = randn(n, n)
     X = X1'*X1
-    A = randn(n, n)
+    local A = randn(n, n)
     F = eigen(A)
-    A = real(F.vectors*diagm(rand(n))*inv(F.vectors))
-    B = X - A*X*A'
-    ws = LyapdWs(n)
+    if maximum(abs.(F.values)) > 1.0
+        continue
+    end
+    local B = X - A*X*A'
+    local ws = LyapdWs(n)
     Σ = similar(X)
     extended_lyapd!(Σ, A, B, ws)
     @test Σ ≈ X
@@ -53,16 +55,14 @@ end
 # with unit roots
 for i = 1:100
     s = Int64(floor(1000*rand()))
-    @show s
     Random.seed!(s)
     local n = 2
     X1 = randn(n, n)
     X = X1'*X1
-    A = randn(n, n)
+    local A = randn(n, n)
     F = eigen(A)
     eigenvalues = diagm(rand(n))
-    A = real(F.vectors*eigenvalues*inv(F.vectors))
-    @show eigen(A).values
+    local A = real(F.vectors*eigenvalues*inv(F.vectors))
     m = 2
     AA = vcat(hcat([ 1.0 -0.5 0; 0 1.0 0], randn(m, n)),
               [1 -1 0 0 0],
@@ -70,14 +70,13 @@ for i = 1:100
     if abs(det(AA))  < 1e-12
         continue
     end
-    B = X - A*X*A'
+    local B = X - A*X*A'
     BB = vcat(hcat(I(m), zeros(m, n+1)),
               [0 0 0.2 0 0],
               hcat(zeros(n, m+1), B))
 
-    ws = LyapdWs(n + m + 1)
+    local ws = LyapdWs(n + m + 1)
     Σ = Matrix{Float64}(undef, n+m+1, n+m+1)
     extended_lyapd!(Σ, AA, BB, ws)
     @test Σ[m + 1 .+ (1:n), m + 1 .+ (1:n)] ≈ X
-    @show Σ
 end
