@@ -9,26 +9,28 @@ using LinearAlgebra.BLAS
 
 struct LinearRationalExpectationsWs
     algo::String
-    endogenous_nbr
-    exogenous_nbr
-    exogenous_deterministic_nbr
-    forward_indices
-    purely_forward_indices
-    current_indices
-    backward_indices
-    both_indices
-    static_indices
-    dynamic_indices
-    current_dynamic_indices
-    forward_indices_d
-    backward_indices_d
-    current_dynamic_indices_d
-    exogenous_indices
-    static_nbr
-    forward_nbr
-    backward_nbr
-    both_nbr
-    current_nbr
+    endogenous_nbr::Int64
+    exogenous_nbr::Int64
+    exogenous_deterministic_nbr::Int64
+    forward_indices::Vector{Int64}
+    purely_forward_indices::Vector{Int64}
+    current_indices::Vector{Int64}
+    backward_indices::Vector{Int64}
+    both_indices::Vector{Int64}
+    static_indices::Vector{Int64}
+    dynamic_indices::Vector{Int64}
+    current_dynamic_indices::Vector{Int64}
+    forward_indices_d::Vector{Int64}
+    backward_indices_d::Vector{Int64}
+    current_dynamic_indices_d::Vector{Int64}
+    current_dynamic_indices_d_j::Vector{Int64}
+    exogenous_indices::Vector{Int64}
+    static_indices_j::Vector{Int64}
+    static_nbr::Int64
+    forward_nbr::Int64
+    backward_nbr::Int64
+    both_nbr::Int64
+    current_nbr::Int64
     jacobian_static::Matrix{Float64} 
     qr_ws::QrWs
     solver_ws::Union{GsSolverWs, CyclicReductionWs}
@@ -62,14 +64,14 @@ struct LinearRationalExpectationsWs
     #    eye_plus_at_kron_b_ws::EyePlusAtKronBWs
     
     function LinearRationalExpectationsWs(algo::String,
-                                          endogenous_nbr,
-                                          exogenous_nbr,
-                                          exogenous_deterministic_nbr,
-                                          forward_indices,
-                                          current_indices,
-                                          backward_indices,
-                                          both_indices,
-                                          static_indices)
+                                          endogenous_nbr::Int64,
+                                          exogenous_nbr::Int64,
+                                          exogenous_deterministic_nbr::Int64,
+                                          forward_indices::Vector{Int64},
+                                          current_indices::Vector{Int64},
+                                          backward_indices::Vector{Int64},
+                                          both_indices::Vector{Int64},
+                                          static_indices::Vector{Int64})
         static_nbr = length(static_indices)
         forward_nbr = length(forward_indices)
         backward_nbr = length(backward_indices)
@@ -82,10 +84,12 @@ struct LinearRationalExpectationsWs
         forward_indices_d = findall(in(forward_indices), dynamic_indices)
         backward_indices_d = findall(in(backward_indices), dynamic_indices)
         current_dynamic_indices_d = findall(in(current_dynamic_indices), dynamic_indices)
+        current_dynamic_indices_d_j = backward_nbr .+ findall(in(dynamic_indices), current_indices)
         exogenous_indices = backward_nbr + current_nbr + forward_nbr .+ (1:exogenous_nbr)
         if static_nbr > 0
             jacobian_static = Matrix{Float64}(undef, endogenous_nbr, static_nbr)
             qr_ws = QrWs(jacobian_static)
+            static_indices_j = backward_nbr .+ [findfirst(isequal(x), current_indices) for x in static_indices] 
 #        else
 #            jacobian_static = Matrix{Float64}(undef, 0,0)
 #            qr_ws = QrWs(Matrix{Float64}(undef, 0,0))
@@ -146,7 +150,9 @@ struct LinearRationalExpectationsWs
             forward_indices, purely_forward_indices, current_indices,
             backward_indices, both_indices, static_indices, dynamic_indices,
             current_dynamic_indices, forward_indices_d, backward_indices_d,
-            current_dynamic_indices_d, exogenous_indices, static_nbr, forward_nbr, backward_nbr,
+            current_dynamic_indices_d, current_dynamic_indices_d_j,
+            exogenous_indices, static_indices_j,
+            static_nbr, forward_nbr, backward_nbr,
             both_nbr, current_nbr, jacobian_static, qr_ws, solver_ws,
             a, b, c, d, e, x,
             ghx, gx, hx, temp1, temp2, temp3, temp4, temp5, temp6, temp7, b10, b11,
@@ -185,7 +191,7 @@ ws: FirstOrderWs workspace. On exit contains the triangular part conrresponding
 """
 function remove_static!(jacobian::Matrix,
                         ws::LinearRationalExpectationsWs)
-    ws.jacobian_static .= view(jacobian, :, ws.backward_nbr .+ ws.current_indices[ws.static_indices])
+    ws.jacobian_static .= view(jacobian, :, ws.static_indices_j)
     geqrf_core!(ws.jacobian_static, ws.qr_ws)
     ormqr_core!('L', ws.jacobian_static', jacobian, ws.qr_ws)
 end
@@ -225,13 +231,37 @@ function add_static!(results::LinearRationalExpectationsResults,
 end
 
 function get_abc!(ws::LinearRationalExpectationsWs, jacobian::AbstractMatrix{Float64})
-    i_rows = (ws.static_nbr+1):ws.endogenous_nbr
     fill!(ws.a, 0.0)
     fill!(ws.b, 0.0)
     fill!(ws.c, 0.0)
-    ws.a[:, ws.forward_indices_d] .= view(jacobian, i_rows, ws.backward_nbr .+ ws.current_nbr .+ (1:ws.forward_nbr))
-    ws.b[:, ws.current_dynamic_indices_d] .= view(jacobian, i_rows, ws.backward_nbr .+ ws.current_dynamic_indices)
-    ws.c[:, ws.backward_indices_d] .= view(jacobian, i_rows, 1:ws.backward_nbr)
+
+    dynamic_nbr = ws.endogenous_nbr - ws.static_nbr
+    col_s = ws.backward_nbr + ws.current_nbr + 1
+    for (i,j) in enumerate(ws.forward_indices_d)
+        row_s = ws.static_nbr + 1
+        for k = 1:dynamic_nbr
+            ws.a[k, j] = jacobian[row_s, col_s]
+            row_s += 1
+        end
+        col_s += 1
+    end
+    
+    for (i,j) in enumerate(ws.current_dynamic_indices_d)
+        col_s = ws.current_dynamic_indices_d_j[i]
+        row_s = ws.static_nbr + 1
+        for k = 1:dynamic_nbr
+            ws.b[k, j] = jacobian[row_s, col_s]
+            row_s += 1
+        end
+    end
+    
+    for (i,j) in enumerate(ws.backward_indices_d)
+        row_s = ws.static_nbr + 1
+        for k = 1:dynamic_nbr
+            ws.c[k, j] = jacobian[row_s, i]
+            row_s += 1
+        end
+    end
 end
 
 function get_de!(ws::LinearRationalExpectationsWs, jacobian::AbstractMatrix{Float64})
@@ -255,7 +285,7 @@ function make_lu_AGplusB!(AGplusB, A, G, B, ws)
     vAGplusB = view(AGplusB, :, ws.current_indices)
     vAGplusB .= B
     ws.temp3 .= view(G, ws.forward_indices, :)
-    mul!(ws.temp7, A, ws.temp3,)
+    mul!(ws.temp7, A, ws.temp3)
     vAGplusB = view(AGplusB, :, ws.backward_indices)
     vAGplusB .+= ws.temp7
     LinSolveAlgo.lu!(AGplusB, ws.AGplusB_linsolve_ws)
