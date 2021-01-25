@@ -27,6 +27,7 @@ struct LinearRationalExpectationsWs
     exogenous_indices::Vector{Int64}
     static_indices_j::Vector{Int64}
     static_nbr::Int64
+    dynamic_nbr::Int64
     forward_nbr::Int64
     backward_nbr::Int64
     both_nbr::Int64
@@ -152,7 +153,7 @@ struct LinearRationalExpectationsWs
             current_dynamic_indices, forward_indices_d, backward_indices_d,
             current_dynamic_indices_d, current_dynamic_indices_d_j,
             exogenous_indices, static_indices_j,
-            static_nbr, forward_nbr, backward_nbr,
+            static_nbr, dynamic_nbr, forward_nbr, backward_nbr,
             both_nbr, current_nbr, jacobian_static, qr_ws, solver_ws,
             a, b, c, d, e, x,
             ghx, gx, hx, temp1, temp2, temp3, temp4, temp5, temp6, temp7, b10, b11,
@@ -204,26 +205,55 @@ function add_static!(results::LinearRationalExpectationsResults,
                      jacobian::Matrix{Float64},
                      ws::LinearRationalExpectationsWs)
     # static rows are at the top of the QR transformed Jacobian matrix
-    i_static = 1:ws.static_nbr
     # B_s,s
-    ws.b10 .= view(jacobian, i_static, ws.backward_nbr .+ ws.static_indices)
+    @inbounds for i = 1:static_nbr
+        k = ws.backward_nbr + ws.static_indices[i]
+        for j = 1:ws.static_nbr
+            ws.b10[j, i] = jacobian[j, k]
+        end
+    end
     # B_s,d
-    ws.b11 .= view(jacobian, i_static, ws.backward_nbr .+ ws.dynamic_indices)
+    @inbounds for i = 1:ws.dynamic_nbr
+        k = ws.backward_nbr + ws.dynamic_indices[i]
+        for j = 1:ws.static_nbr
+            ws.b11[j, i] = jacobian[j, k]
+        end
+    end
     # A_s
-    ws.temp1 .= view(jacobian, i_static, ws.backward_nbr + ws.current_nbr .+ (1:ws.forward_nbr))
+    @inbounds for i = 1:ws.forward_nbr
+        k = ws.backward_nbr + ws.current_nr + ws.dynamic_indices[i]
+        for j = 1:ws.static_nbr
+            ws.temp1[j, i] = jacobian[j, k]
+        end
+    end
+    @inbounds ws.temp1 .= view(jacobian, i_static, ws.backward_nbr + ws.current_nbr .+ (1:ws.forward_nbr))
     # C_s
-    ws.temp2 .= view(jacobian, i_static, 1:ws.backward_nbr)
+    for i = 1:ws.backward_nbr
+        for j = 1:ws.static_nbr
+            ws.temp2[j, i] = jacobian[j, i]
+        end
+    end
     # Gy,fwrd
-    ws.temp3 .= view(results.g1_1, ws.forward_indices, :)
+    @inbounds for i = 1:backward_nbr
+        k = ws.forward_indices[i]
+        for j = 1:ws.forward_nbr
+            ws.temp3[j, i] = results.g1_1[ws.forward_indices[j], k]
+        end
+    end
     # Gy,dynamic
-    ws.temp4 .= view(results.g1_1, ws.dynamic_indices, :)
+    @inbounds for i = 1:backward_nbr
+        k = ws.forward_indices[i]
+        for j = 1:ws.dynamic_nbr
+            ws.temp4[j, i] = results.g1_1[ws.dynamic_indices[j], k]
+        end
+    end
     # ws.temp2 = B_s,d*Gy.dynamic + C_s
     mul!(ws.temp2, ws.b11, ws.temp4, 1.0, 1.0)
     mul!(ws.temp6, ws.temp1, ws.temp3)
     mul!(ws.temp2, ws.temp6, results.gs1, -1.0, -1.0)
     # ws.temp3 = S\ws.temp3
     linsolve_core!(ws.b10, ws.temp2, ws.linsolve_static_ws)
-    for i = 1:ws.backward_nbr
+    @inbounds for i = 1:ws.backward_nbr
         for j=1:ws.static_nbr
             results.g1[ws.static_indices[j],i] = ws.temp2[j,i]
         end
@@ -235,29 +265,28 @@ function get_abc!(ws::LinearRationalExpectationsWs, jacobian::AbstractMatrix{Flo
     fill!(ws.b, 0.0)
     fill!(ws.c, 0.0)
 
-    dynamic_nbr = ws.endogenous_nbr - ws.static_nbr
     col_s = ws.backward_nbr + ws.current_nbr + 1
-    for (i,j) in enumerate(ws.forward_indices_d)
+    @inbounds for (i,j) in enumerate(ws.forward_indices_d)
         row_s = ws.static_nbr + 1
-        for k = 1:dynamic_nbr
+        for k = 1:ws.dynamic_nbr
             ws.a[k, j] = jacobian[row_s, col_s]
             row_s += 1
         end
         col_s += 1
     end
     
-    for (i,j) in enumerate(ws.current_dynamic_indices_d)
+    @inbounds for (i,j) in enumerate(ws.current_dynamic_indices_d)
         col_s = ws.current_dynamic_indices_d_j[i]
         row_s = ws.static_nbr + 1
-        for k = 1:dynamic_nbr
+        for k = 1:ws.dynamic_nbr
             ws.b[k, j] = jacobian[row_s, col_s]
             row_s += 1
         end
     end
     
-    for (i,j) in enumerate(ws.backward_indices_d)
+    @inbounds for (i,j) in enumerate(ws.backward_indices_d)
         row_s = ws.static_nbr + 1
-        for k = 1:dynamic_nbr
+        for k = 1:ws.dynamic_nbr
             ws.c[k, j] = jacobian[row_s, i]
             row_s += 1
         end
