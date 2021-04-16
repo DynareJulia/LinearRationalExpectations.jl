@@ -15,6 +15,7 @@ struct LyapdWs
     dgees_ws::DgeesWs
     linsolve_ws1::LinSolveWs
     linsolve_ws2::LinSolveWs
+    stationary_model::Bool
     function LyapdWs(n)
         AA = Matrix{Float64}(undef, n, n)
         AAtemp = Matrix{Float64}(undef, n, n)
@@ -27,9 +28,10 @@ struct LyapdWs
         dgees_ws = DgeesWs(n)
         linsolve_ws1 = LinSolveWs(n)
         linsolve_ws2 = LinSolveWs(2*n)
+        stationary_model = true
         new(AA, AAtemp, AA2, BB, temp1, XX, nonstationary_variables,
             nonstationary_trends, dgees_ws, linsolve_ws1,
-            linsolve_ws2)
+            linsolve_ws2, stationary_model)
     end
 end
 
@@ -143,6 +145,7 @@ function extended_lyapd_core!(Σ, A, B, ws)
         if row == 1 || A[row, row - 1] == 0
             if A[row, row] > 1 - 1e-6
                 ws.nonstationary_trends[row] = true
+                ws.stationary_model = false
             else 
                 solve_one_row!(Σ, A, B, n, row, ws)
                 vB = view(B, 1:row - 1, 1:row - 1)
@@ -164,6 +167,7 @@ function extended_lyapd_core!(Σ, A, B, ws)
             if a*a + A[row, row - 1]*A[row - 1, row] > 1 - 2e-6
                 ws.nonstationary_trends[row] = true
                 ws.nonstationary_trends[row - 1] = true
+                ws.stationary_model = false
             else 
                 solve_two_rows!(Σ, A, B, n, row, ws)
                 vB = view(B, 1:row - 2, 1:row - 2)
