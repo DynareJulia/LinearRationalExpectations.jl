@@ -3,7 +3,7 @@ using FastLapackInterface
 using FastLapackInterface.LinSolveAlgo
 using FastLapackInterface.SchurAlgo
 
-struct LyapdWs
+mutable struct LyapdWs
     AA::Matrix{Float64}
     AAtemp::Matrix{Float64}
     AA2::Matrix{Float64}
