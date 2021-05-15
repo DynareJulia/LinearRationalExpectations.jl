@@ -35,7 +35,10 @@ mutable struct LyapdWs
     end
 end
 
-function solve_one_row!(X, A, B, n, row, ws)
+function solve_one_row!(X::AbstractMatrix{Float64},
+                        A::AbstractMatrix{Float64},
+                        B::AbstractMatrix{Float64},
+                        n, row, ws::LyapdWs)
     α = A[row, row]
     vA = view(A, 1:row, 1:row)
     vAA = view(ws.AAtemp, 1:row, 1:row)
@@ -56,7 +59,10 @@ function solve_one_row!(X, A, B, n, row, ws)
     end
 end
 
-function solve_two_rows!(X, A, B, n, row, ws)
+function solve_two_rows!(X::AbstractMatrix{Float64},
+                         A::AbstractMatrix{Float64},
+                         B::AbstractMatrix{Float64},
+                         n, row, ws::LyapdWs)
     α11, α21, α12, α22 = A[(row - 1):row, (row - 1):row]
     l1 = 1
     l2 = 1
@@ -97,7 +103,10 @@ end
 """
     function lyapd(Σ, A, B, ws) solves equation Σ - A*Σ*A' = B
 """
-function extended_lyapd!(Σ, A, B, ws)
+function extended_lyapd!(Σ::AbstractMatrix{Float64},
+                         A::AbstractMatrix{Float64},
+                         B::AbstractMatrix{Float64},
+                         ws::LyapdWs)
     n = size(A, 1)
     copy!(ws.AA, A)
     dgees!(ws.dgees_ws, ws.AA, >, 1-1e-6)
@@ -136,7 +145,10 @@ function extended_lyapd!(Σ, A, B, ws)
     end
 end
 
-function extended_lyapd_core!(Σ, A, B, ws)
+function extended_lyapd_core!(Σ::AbstractMatrix{Float64},
+                              A::AbstractMatrix{Float64},
+                              B::AbstractMatrix{Float64},
+                              ws::LyapdWs)
     fill!(Σ, 0.0)
     fill!(ws.nonstationary_variables, false)
     n = size(A, 1)
