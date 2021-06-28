@@ -77,10 +77,8 @@ targetE[2, 10] = 1.0
 
 d_orig = copy(ws.d)
 e_orig = copy(ws.e)
-options = Dict()
-options["cyclic_reduction"] = Dict([("tol", 1e-8)])
-options["generalized_schur"] = Dict([("criterium", 1+1e-6)])
-LinearRationalExpectations.PolynomialMatrixEquations.gs_solver!(ws.solver_ws, ws.d, ws.e, ws.backward_nbr, options["generalized_schur"]["criterium"])
+options = LinearRationalExpectationsOptions()
+LinearRationalExpectations.PolynomialMatrixEquations.gs_solver!(ws.solver_ws, ws.d, ws.e, ws.backward_nbr, options.generalized_schur.criterium)
 @test d_orig * vcat(I(ws.backward_nbr), ws.solver_ws.g2[:, 1:ws.backward_nbr])*ws.solver_ws.g1 ≈ e_orig * vcat(I(ws.backward_nbr), ws.solver_ws.g2[:, 1:ws.backward_nbr])
 
 results.gs1 .= ws.solver_ws.g1

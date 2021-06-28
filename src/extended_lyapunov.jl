@@ -3,7 +3,7 @@ using FastLapackInterface
 using FastLapackInterface.LinSolveAlgo
 using FastLapackInterface.SchurAlgo
 
-mutable struct LyapdWs
+struct LyapdWs
     AA::Matrix{Float64}
     AAtemp::Matrix{Float64}
     AA2::Matrix{Float64}
@@ -15,8 +15,7 @@ mutable struct LyapdWs
     dgees_ws::DgeesWs
     linsolve_ws1::LinSolveWs
     linsolve_ws2::LinSolveWs
-    stationary_model::Bool
-    function LyapdWs(n)
+    function LyapdWs(n::Int64)
         AA = Matrix{Float64}(undef, n, n)
         AAtemp = Matrix{Float64}(undef, n, n)
         AA2 = Matrix{Float64}(undef, 2*n, 2*n)
@@ -28,17 +27,16 @@ mutable struct LyapdWs
         dgees_ws = DgeesWs(n)
         linsolve_ws1 = LinSolveWs(n)
         linsolve_ws2 = LinSolveWs(2*n)
-        stationary_model = true
         new(AA, AAtemp, AA2, BB, temp1, XX, nonstationary_variables,
             nonstationary_trends, dgees_ws, linsolve_ws1,
-            linsolve_ws2, stationary_model)
+            linsolve_ws2)
     end
 end
 
 function solve_one_row!(X::AbstractMatrix{Float64},
                         A::AbstractMatrix{Float64},
                         B::AbstractMatrix{Float64},
-                        n, row, ws::LyapdWs)
+                        n::Int64, row::Int64, ws::LyapdWs)
     α = A[row, row]
     vA = view(A, 1:row, 1:row)
     vAA = view(ws.AAtemp, 1:row, 1:row)
@@ -62,7 +60,7 @@ end
 function solve_two_rows!(X::AbstractMatrix{Float64},
                          A::AbstractMatrix{Float64},
                          B::AbstractMatrix{Float64},
-                         n, row, ws::LyapdWs)
+                         n::Int64, row::Int64, ws::LyapdWs)
     α11, α21, α12, α22 = A[(row - 1):row, (row - 1):row]
     l1 = 1
     l2 = 1
@@ -157,7 +155,6 @@ function extended_lyapd_core!(Σ::AbstractMatrix{Float64},
         if row == 1 || A[row, row - 1] == 0
             if A[row, row] > 1 - 1e-6
                 ws.nonstationary_trends[row] = true
-                ws.stationary_model = false
             else 
                 solve_one_row!(Σ, A, B, n, row, ws)
                 vB = view(B, 1:row - 1, 1:row - 1)
@@ -179,7 +176,6 @@ function extended_lyapd_core!(Σ::AbstractMatrix{Float64},
             if a*a + A[row, row - 1]*A[row - 1, row] > 1 - 2e-6
                 ws.nonstationary_trends[row] = true
                 ws.nonstationary_trends[row - 1] = true
-                ws.stationary_model = false
             else 
                 solve_two_rows!(Σ, A, B, n, row, ws)
                 vB = view(B, 1:row - 2, 1:row - 2)
@@ -200,3 +196,6 @@ function extended_lyapd_core!(Σ::AbstractMatrix{Float64},
     end
 end
                                  
+function is_stationary(ws::LyapdWs)
+    return !any(ws.nonstationary_trends)
+end

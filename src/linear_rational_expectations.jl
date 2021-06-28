@@ -166,11 +166,28 @@ struct LinearRationalExpectationsWs
     end
 end
 
+Base.@kwdef struct CyclicReductionOptions
+    maxiter::Int64 = 100
+    tol::Float64   = 1e-8
+end
+
+Base.@kwdef struct GeneralizedSchurOptions
+    # Near unit roots are considered stable roots
+    criterium::Float64 = 1.0 + 1e-6
+end
+
+Base.@kwdef struct LinearRationalExpectationsOptions
+    cyclic_reduction::CyclicReductionOptions = CyclicReductionOptions()
+    generalized_schur::GeneralizedSchurOptions = GeneralizedSchurOptions()
+end
+
 struct LinearRationalExpectationsResults
     g1::Matrix{Float64}  # full approximation
     gs1::Matrix{Float64} # state transition matrices
-    g1_1::SubArray # solution first order derivatives w.r. to state variables
-     g1_2::SubArray # solution first order derivatives w.r. to current exogenous variables
+    # solution first order derivatives w.r. to state variables
+    g1_1::SubArray{Float64, 2, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}}, true}
+    # solution first order derivatives w.r. to current exogenous variables
+    g1_2::SubArray{Float64, 2, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}}, true}
 #    g1_3::SubArray # solution first order derivatives w.r. to lagged exogenous variables
     
     function LinearRationalExpectationsResults(endogenous_nbr::Int64,
@@ -330,16 +347,17 @@ function solve_for_derivatives_with_respect_to_shocks!(results::LinearRationalEx
 #        end
     end
 end
-
+     
 function first_order_solver!(results::LinearRationalExpectationsResults,
                              algo::String,
                              jacobian::AbstractMatrix{Float64},
-                             options::Dict{String, Any},
+                             options::LinearRationalExpectationsOptions,
                              ws::LinearRationalExpectationsWs)
     remove_static!(jacobian, ws)
     if algo == "CR"
         get_abc!(ws, jacobian)
-        cyclic_reduction!(ws.x, ws.c, ws.b, ws.a, ws.solver_ws, options["cyclic_reduction"]["tol"], 100)
+        cyclic_reduction!(ws.x, ws.c, ws.b, ws.a, ws.solver_ws,
+                          options.cyclic_reduction.tol, options.cyclic_reduction.maxiter)
         vg = view(results.gs1, :, 1:ws.backward_nbr)
         vx = view(ws.x, ws.backward_indices_d, ws.backward_indices_d)
         copy!(vg, vx)
@@ -348,7 +366,8 @@ function first_order_solver!(results::LinearRationalExpectationsResults,
         copy!(vg, vx)
     elseif algo == "GS"
         get_de!(ws, jacobian)
-        gs_solver!(ws.solver_ws, ws.d, ws.e, ws.backward_nbr, options["generalized_schur"]["criterium"])
+        gs_solver!(ws.solver_ws, ws.d, ws.e, ws.backward_nbr,
+                   options.generalized_schur.criterium)
         results.gs1 .= ws.solver_ws.g1
         vs = view(ws.solver_ws.g1, 1:ws.backward_nbr, 1:ws.backward_nbr)
         vr = view(results.g1, ws.backward_indices,1:ws.backward_nbr)
