@@ -19,6 +19,7 @@ struct LinearRationalExpectationsWs
     both_indices::Vector{Int64}
     static_indices::Vector{Int64}
     dynamic_indices::Vector{Int64}
+    non_backward_indices::Vector{Int64}
     current_dynamic_indices::Vector{Int64}
     forward_indices_d::Vector{Int64}
     backward_indices_d::Vector{Int64}
@@ -84,6 +85,7 @@ struct LinearRationalExpectationsWs
         dynamic_indices = setdiff(collect(1:endogenous_nbr), static_indices)
         current_dynamic_indices = setdiff(current_indices, static_indices)
         purely_forward_indices = setdiff(forward_indices, both_indices)
+        non_backward_indices = union(purely_forward_indices, static_indices)
         forward_indices_d = findall(in(forward_indices), dynamic_indices)
         backward_indices_d = findall(in(backward_indices), dynamic_indices)
         current_dynamic_indices_d = findall(in(current_dynamic_indices), dynamic_indices)
@@ -151,18 +153,20 @@ struct LinearRationalExpectationsWs
         #        else
         #            eye_plus_at_kron_b_ws = EyePlusAtKronBWs(1, 1, 1, 1)
         # end
-        new(algo, endogenous_nbr, exogenous_nbr, exogenous_deterministic_nbr,
-            forward_indices, purely_forward_indices, current_indices,
-            backward_indices, both_indices, static_indices, dynamic_indices,
-            current_dynamic_indices, forward_indices_d, backward_indices_d,
+        new(algo, endogenous_nbr, exogenous_nbr,
+            exogenous_deterministic_nbr, forward_indices,
+            purely_forward_indices, current_indices, backward_indices,
+            both_indices, static_indices, dynamic_indices,
+            non_backward_indices, current_dynamic_indices,
+            forward_indices_d, backward_indices_d,
             current_dynamic_indices_d, current_dynamic_indices_d_j,
-            exogenous_indices, static_indices_j,
-            static_nbr, dynamic_nbr, forward_nbr, backward_nbr,
-            both_nbr, current_nbr, jacobian_static, qr_ws, solver_ws,
-            a, b, c, d, e, x,
-            ghx, gx, hx, temp1, temp2, temp3, temp4, temp5, temp6, temp7,
-            temp8, temp9, b10, b11, icolsD, icolsE, jcolsD, jcolsE,
-            colsUD, colsUE, AGplusB, linsolve_static_ws, AGplusB_linsolve_ws)
+            exogenous_indices, static_indices_j, static_nbr,
+            dynamic_nbr, forward_nbr, backward_nbr, both_nbr,
+            current_nbr, jacobian_static, qr_ws, solver_ws, a, b, c,
+            d, e, x, ghx, gx, hx, temp1, temp2, temp3, temp4, temp5,
+            temp6, temp7, temp8, temp9, b10, b11, icolsD, icolsE,
+            jcolsD, jcolsE, colsUD, colsUE, AGplusB,
+            linsolve_static_ws, AGplusB_linsolve_ws)
     end
 end
 
@@ -183,7 +187,10 @@ end
 
 struct LinearRationalExpectationsResults
     g1::Matrix{Float64}  # full approximation
-    gs1::Matrix{Float64} # state transition matrices
+    gs1::Matrix{Float64} # state transition matrices: states x states
+    hs1::Matrix{Float64} # states x shocks
+    gns1::Matrix{Float64} # non states x state
+    hns1::Matrix{Float64} # non states x shocsk
     # solution first order derivatives w.r. to state variables
     g1_1::SubArray{Float64, 2, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}}, true}
     # solution first order derivatives w.r. to current exogenous variables
@@ -193,14 +200,18 @@ struct LinearRationalExpectationsResults
     function LinearRationalExpectationsResults(endogenous_nbr::Int64,
                                                exogenous_nbr::Int64,
                                                backward_nbr::Int64)
-        nstate = backward_nbr + exogenous_nbr 
-        g1 =  zeros(endogenous_nbr,(nstate + 1))
+        state_nbr = backward_nbr + exogenous_nbr
+        non_backward_nbr = endogenous_nbr - backward_nbr
+        g1 =  zeros(endogenous_nbr,(state_nbr + 1))
         gs1 = zeros(backward_nbr,backward_nbr)
+        hs1 = zeros(backward_nbr,exogenous_nbr)
+        gns1 = zeros(non_backward_nbr,backward_nbr)
+        hns1 = zeros(non_backward_nbr,exogenous_nbr)
         g1_1 = view(g1, :, 1:backward_nbr)
         g1_2 = view(g1, :, backward_nbr .+ (1:exogenous_nbr))
 #        g1_3 = view(g[1], :, backward_nbr + exogenous_nbr .+ lagged_exogenous_nbr)
 #        new(g, gs, g1_1, g1_2, g1_3, AGplusB, AGplusB_linsolve_ws)
-        new(g1, gs1, g1_1, g1_2)
+        new(g1, gs1, hs1, gns1, hns1, g1_1, g1_2)
     end
 end
 
@@ -393,6 +404,12 @@ function first_order_solver!(results::LinearRationalExpectationsResults,
     copy!(vt, vj)
     make_lu_AGplusB!(ws.AGplusB, ws.temp8, results.g1_1, ws.temp9, ws)        
     solve_for_derivatives_with_respect_to_shocks!(results, jacobian, ws)
+    vh = view(results.g1_2, ws.backward_indices, :)
+    results.hs1 .= vh
+    vgns = view(results.g1_1, ws.non_backward_indices, :)
+    results.gns1 .= vgns
+    vhns = view(results.g1_2, ws.non_backward_indices, :)
+    results.hns1 .= vhns
 end
 
 
