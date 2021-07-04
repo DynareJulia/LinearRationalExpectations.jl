@@ -91,14 +91,9 @@ struct LinearRationalExpectationsWs
         current_dynamic_indices_d = findall(in(current_dynamic_indices), dynamic_indices)
         current_dynamic_indices_d_j = backward_nbr .+ findall(in(dynamic_indices), current_indices)
         exogenous_indices = backward_nbr + current_nbr + forward_nbr .+ (1:exogenous_nbr)
-        if static_nbr > 0
-            jacobian_static = Matrix{Float64}(undef, endogenous_nbr, static_nbr)
-            qr_ws = QrWs(jacobian_static)
-            static_indices_j = backward_nbr .+ [findfirst(isequal(x), current_indices) for x in static_indices] 
-#        else
-#            jacobian_static = Matrix{Float64}(undef, 0,0)
-#            qr_ws = QrWs(Matrix{Float64}(undef, 0,0))
-        end
+        jacobian_static = Matrix{Float64}(undef, endogenous_nbr, static_nbr)
+        static_indices_j = backward_nbr .+ [findfirst(isequal(x), current_indices) for x in static_indices] 
+        qr_ws = QrWs(jacobian_static)
         if algo == "GS"
             de_order = forward_nbr + backward_nbr
             d = zeros(de_order, de_order)
