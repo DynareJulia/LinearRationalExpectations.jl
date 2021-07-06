@@ -1,73 +1,130 @@
+struct LRENonstationnaryVarianceWs
+    rΣ_s_s::Matrix{Float64}
+    rA1::Matrix{Float64}
+    rA2::Matrix{Float64}
+    rB1::Matrix{Float64}
+    rB2::Matrix{Float64}
+    rA2S::Matrix{Float64}
+    rB2S::Matrix{Float64}
+    rΣ_ns_s::Matrix{Float64}
+    rΣ_ns_ns::Matrix{Float64}
+    function LRENonstationaryVarianceWs(exogenous_nbr::Int64,
+                                        state_nbr::Int64,
+                                        nonstate_nbr::Int64)
+        rΣ_s_s = Matrix{Float64}(undef, state_nbr, state_nbr)
+        rA1 = Matrix{Float64}(undef, state_nbr, state_nbr)
+        rA2 = Matrix{Float64}(undef, nonstate_nbr, state_nbr)
+        rB1 = Matrix{Float64}(undef, state_nbr, exogenous_nbr)
+        rB2 = Matrix{Float64}(undef, nonstate_nbr, exogenous_nbr)
+        rA2S = Matrix{Float64}(undef, nonstate_nbr, state_nbr)
+        rB2S = Matrix{Float64}(undef, nonstate_nbr, exogenous_nbr)
+        rΣ_ns_s = Matrix{Float64}(undef, nonstate_nbr, state_nbr)
+        rΣ_ns_ns = Matrix{Float64}(undef, nonstate_nbr, nonstate_nbr)
+        new(rΣ_s_s, rA1, rA2, rB1, rB2,
+            rA2S, rB2S, rΣ_ns_s, rΣ_ns_ns)
+    end
+end
+
 struct LREVarianceWs
-    tmp_nst_nsh::Matrix{Float64}
-    LREws::LREWs
-    function LREVarianceWs(nvar::Int64, nstates::Int64, nshocks::Int64, LREws::LREWs)
-        tmp_nst_nsh = zeros(LREws.backward_nbr + LREws.both_nbr, LREws.exogenous_nbr)
-        new(tmp_nst_nsh, LREws)
+    B1S::Matrix{Float64}
+    B1SB1::Matrix{Float64}
+    A2S::Matrix{Float64}
+    B2S::Matrix{Float64}
+    Σ_s_s::Matrix{Float64}
+    Σ_ns_s::Matrix{Float64}
+    Σ_ns_ns::Matrix{Float64}
+    stationary_variables::Vector{Bool}
+    nonstationnary_ws::Vector{LRENonstationnaryVarianceWs}
+    lre_ws::LinearRationalExpectationsWs
+    lyapd_ws::LyapdWs
+    function LREVarianceWs(var_nbr::Int64, state_nbr::Int64,
+                           shock_nbr::Int64, lre_ws::LinearRationalExpectationsWs)
+        nonstate_nbr = var_nbr - state_nbr
+        B1S = Matrix{Float64}(undef, state_nbr, shock_nbr)
+        B1SB1 = Matrix{Float64}(undef, state_nbr, state_nbr)
+        A2S = Matrix{Float64}(undef, nonstate_nbr, state_nbr)
+        B2S = Matrix{Float64}(undef, nonstate_nbr, shock_nbr)
+        Σ_s_s = Matrix{Float64}(undef, state_nbr, state_nbr)
+        Σ_ns_s = Matrix{Float64}(undef, nonstate_nbr, state_nbr)
+        Σ_ns_ns = Matrix{Float64}(undef, nonstate_nbr, nonstate_nbr)
+        stationary_variables = Vector{Bool}(undef, var_nbr)
+        nonstationnary_ws = Vector{LRENonstationnaryVarianceWs}(undef, 0)
+        lyapd_ws = LyapdWs(state_nbr)
+        new(B1S, B1SB1, A2S, B2S, Σ_s_s, Σ_ns_s, Σ_ns_ns,
+            stationary_variables, nonstationnary_ws,
+            lre_ws, lyapd_ws)
+    end
 end
 
-"""
-    mul3!(D, A, B, C, tmp)
-
-computes D = A*B*C
-
-using workspace tmp
-"""
-
-function mul3!(D::AbstractVecOrMat{Float64},
-               A::AbstractVecOrMat{Float64},
-               B::AbstractVecOrMat{Float64},
-               C::AbstractVecOrMat{Float64},
-               tmp::AbstractVecOrMat{Float64})
-    mul!(tmp, B, C)
-    mul!(D, A, tmp)
-end
-    
 function compute_variance!(Σy::Matrix{Float64},
-                           A::AbstractVecOrMat{Float64},
-                           B::AbstractVecOrMat{Float64},
+                           A1::AbstractVecOrMat{Float64},
+                           A2::AbstractVecOrMat{Float64},
+                           B1::AbstractVecOrMat{Float64},
+                           B2::AbstractVecOrMat{Float64},
                            Σe::AbstractVecOrMat{Float64},
                            ws::LREVarianceWs)
-
-    A = results.linearrationalexpectations.gs1
-    B1 = zeros(m.n_states, m.exogenous_nbr)
-    g1_1 = results.linearrationalexpectations.g1_1
-    g1_2 = results.linearrationalexpectations.g1_2
-    vr1 = view(g1_2, m.i_bkwrd_b, :)
-    B1 .= vr1
-    ws = LyapdWs(m.n_states::Int64)
-    Σ = zeros(m.n_states, m.n_states)
-    tmp = zeros(m.n_states, m.exogenous_nbr)
-    mul!(tmp, B1, m.Sigma_e)
-    B = zeros(m.n_states, m.n_states)
-    mul!(B, tmp, B1')
-    extended_lyapd!(Σ, A, B, ws)
-    stationary_variables = results.stationary_variables
+    lre_ws = ws.lre_ws
+    mul!(ws.B1S, B1, Σe)
+    mul!(ws.B1SB1, ws.B1S, transpose(B1))
+    # state variables variance
+    extended_lyapd!(ws.Σ_s_s, A1, ws.B1SB1, ws.lyapd_ws)
+    # stationary variables
+    stationary_variables = ws.stationary_variables
     fill!(stationary_variables, true)
     state_stationary_variables =
-    view(stationary_variables, m.i_bkwrd_b)
+        view(stationary_variables, lre_ws.backward_indices)
     nonstate_stationary_variables = view(stationary_variables,
-                                         m.i_non_states)
-    if is_stationary(ws)
-        state_stationary_nbr = m.n_states
-        nonstate_stationary_nbr = m.endogenous_nbr - m.n_states
+                                         lre_ws.non_backward_indices)
+    if is_stationary(ws.lyapd_ws)
+        stationary_variance_blocks!(ws.Σ_ns_s, ws.Σ_ns_ns, A1, A2, B1,
+                                    B2, ws.A2S, ws.B2S, ws.Σ_s_s, Σe)
     else
         fill!(Σy, NaN)
-        state_stationary_variables .= .!ws.nonstationary_variables
+        state_stationary_variables .= .!ws.lyapd_ws.nonstationary_variables
         state_stationary_nbr = count(state_stationary_variables)
-        vr3 = view(results.linearrationalexpectations.g1_1, m.i_non_states, :)
-        for i = 1:(m.endogenous_nbr - m.n_states)
-            for j = 1:m.n_states
-                if ws.nonstationary_variables[j] && abs(vr3[i, j]) > 1e-10
+        for i = 1:(lre_ws.endogenous_nbr - lre_ws.backward_nbr)
+            for j = lre_ws.endogenous_nbr - lre_ws.backward_nbr
+                if ws.lyapd_ws.nonstationary_variables[j] && abs(A2[i, j]) > 1e-10
                     nonstate_stationary_variables[j] = false
                     break
                 end
             end
         end
         nonstate_stationary_nbr = count(nonstate_stationary_variables)
+        if length(ws.nonstationary_ws) == 0
+            nonstationary_ws = LRENonstationaryWs(ws.exogenous_nbr,
+                                                  state_stationary_nbr,
+                                                  nonstate_stationary_nbr)
+            push!(ws.nonstationary_ws, nonstationary_ws)
+        end
+        nonstationary_ws.rA1 .= view(ws.A1, state_stationary_variables, state_stationary_variables)
+        nonstationary_ws.rA2 .= view(ws.A2, nonstate_stationary_variables, state_stationary_variables)
+        nonstationary_ws.rB1 .= view(ws.B1, state_stationary_variables, :)
+        nonstationary_ws.rB2 .= view(ws.B2, nonstate_stationary_variables, :)
+        stationary_variance_blocks!(nonstationary_w.Σ_ns_s,
+                                    nonstationary_ws.Σ_ns_ns,
+                                    nonstationary_ws.rA1,
+                                    nonstationary_ws.rA2,
+                                    nonstationary_ws.rB1,
+                                    nonstationary_ws.rB2,
+                                    nonstationary_ws.rA2S,
+                                    nonstationary_ws.rB2S,
+                                    nonstationary_ws.Σ_s_s,
+                                    Σe)
     end
-    # state / state
-    stationary_nbr = state_stationary_nbr + nonstate_stationary_nbr
+end
+    
+function stationary_variance_blocks!(Σ_ns_s, Σ_ns_ns, A1, A2, B1, B2, A2S, B2S, Σ_s_s, Σe)
+    mul!(B2S, B2, Σe)
+    mul!(Σ_ns_s, B2S, transpose(B1))
+    mul!(Σ_ns_ns, B2S, transpose(B2))
+    mul!(A2S, A2, Σ_s_s)
+    mul!(Σ_ns_s, A2S, transpose(A1), 1.0, 1.0)
+    mul!(Σ_ns_ns, A2S, transpose(A2), 1.0, 1.0)
+end
+
+#=
+stationary_nbr = state_stationary_nbr + nonstate_stationary_nbr
     A2 = zeros(nonstate_stationary_nbr, state_stationary_nbr)
     vtmp = view(results.linearrationalexpectations.g1_1, m.i_non_states, :)
     A2 .= view(vtmp, nonstate_stationary_variables, state_stationary_variables)
@@ -102,4 +159,4 @@ function compute_variance!(Σy::Matrix{Float64},
     vΣy2 = view(vtmp2, state_stationary_variables, nonstate_stationary_variables)
     vΣy1 .= transpose(vΣy2)
 end
-    
+=#    
