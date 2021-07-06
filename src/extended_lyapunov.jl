@@ -112,10 +112,9 @@ function extended_lyapd!(Σ::AbstractMatrix{Float64},
     mul!(ws.BB, ws.temp1, ws.dgees_ws.vs)
 
     extended_lyapd_core!(Σ, ws.AA, ws.BB, ws)
-    
     mul!(ws.temp1, ws.dgees_ws.vs, Σ)
     mul!(Σ, ws.temp1, ws.dgees_ws.vs')
-
+    
     for i = 1:n
         if ws.nonstationary_trends[i]
             for j = 1:n
@@ -148,6 +147,7 @@ function extended_lyapd_core!(Σ::AbstractMatrix{Float64},
                               B::AbstractMatrix{Float64},
                               ws::LyapdWs)
     fill!(Σ, 0.0)
+    fill!(ws.nonstationary_trends, false)
     fill!(ws.nonstationary_variables, false)
     n = size(A, 1)
     row = n
