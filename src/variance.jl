@@ -120,46 +120,55 @@ function make_nonstationary_variance!(Σy::Matrix{Float64},
                                       nonstate_indices,
                                       nonstate_stationary_indices)
     @show state_indices
+    @show state_stationary_indices
     @show nonstate_indices
     n = size(Σy, 1)
     fill!(Σy, NaN)
-    m1 = m2 = 1
-    n1 = n2 = 1
-    for i = 1:n
-        if i == state_indices[n1]
-            if stationary_state_indices[n1]
-                k1 = k2 = 1
-                l1 = l2 = 1
-                for j = 1:n
-                    if j == state_indices[l1]
-                        if state_stationary_indices[l1]
-                            Σy[j,i] = Σ_s_s[k1, m1]
-                            k1 += 1
-                        end
-                        l1 += 1
-                    elseif nonstate_indices[l1]
-                        Σy[j,i] = Σ_ns_s[k2, m1]
-                        k2 += 1
-                    end
+    m = 1
+    for i in state_indices
+        if state_stationary_indices[m]
+            k = 1
+            for j in state_indices
+                if state_stationary_indices[k]
+                    Σy[j,i] = Σ_s_s[k, m]
                 end
-                m1 += 1
+                k += 1
             end
-            n1 += 1
-        elseif nonstate_statonary_indices[n2]
-            k1 = k2 = 1
-            l1 = l2 = 1
-            for j = 1:n
-                if j == state_indices[l1]
-                    Σy[j,i] = Σ_ns_s[m2, k1]
-                    k1 += 1
-                elseif nonstate_indices[l2]
-                    Σy[j,i] = Σ_ns_ns[k2, m2]
-                    k2 += 1
+            display(Σ_s_s)
+            display(Σy)
+            k = 1
+            for j in nonstate_indices
+                @show nonstate_stationary_indices
+                if nonstate_stationary_indices[k]
+                    Σy[j,i] = Σ_ns_s[k, m]
                 end
-                m2 += 1
+                k += 1
             end
-            n2 += 1
+            display(Σy)
         end
+        m += 1
+    end
+    m = 1
+    for i in nonstate_indices
+        if nonstate_stationary_indices[m]
+            k = 1
+            for j in state_indices
+                if state_stationary_indices[k]
+                    Σy[j,i] = Σ_ns_s[m, k]
+                end
+                k += 1
+            end
+            display(Σy)
+            k = 1
+            for j in nonstate_indices
+                if nonstate_stationary_indices[k]
+                    Σy[j,i] = Σ_ns_ns[k, m]
+                end
+                k += 1
+            end
+            display(Σy)
+        end
+        m += 1
     end
 end
 
@@ -206,6 +215,8 @@ function compute_variance!(Σy::Matrix{Float64},
             end
         end
         nonstate_stationary_nbr = count(nonstate_stationary_variables)
+        @show nonstate_stationary_variables
+        @show nonstate_stationary_nbr
         if length(ws.nonstationary_ws) == 0
             nonstationary_ws = LRENonstationaryVarianceWs(lre_ws.endogenous_nbr,
                                                           lre_ws.exogenous_nbr,
