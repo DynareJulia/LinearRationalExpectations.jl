@@ -26,12 +26,11 @@ ws = LinearRationalExpectations.LREVarianceWs(endogenous_nbr,
                                               lre_ws)
 nonstate_nbr = endogenous_nbr - state_nbr
 
-nonstationary = true
-
 for i = 1:100
+    nonstationary = true
     while nonstationary
         global A = [zeros(endogenous_nbr, endogenous_nbr - state_nbr) randn(endogenous_nbr, state_nbr)]
-        global nonstationary = any(abs.(eigen(A[backward_indices, backward_indices]).values) .> 1.0)
+        nonstationary = any(abs.(eigen(A[backward_indices, backward_indices]).values) .> 1.0)
     end
     A1 = A[backward_indices, backward_indices]
     A2 = A[lre_ws.non_backward_indices, lre_ws.backward_indices]
@@ -76,8 +75,8 @@ ws = LinearRationalExpectations.LREVarianceWs(endogenous_nbr,
                                               lre_ws)
 nonstate_nbr = endogenous_nbr - state_nbr
 
-nonstationary = true
 for i = 1:100
+    nonstationary = true
     while nonstationary
         A1a = [1 0.5; 0 1]
         A1b = randn(2, 3)
@@ -89,11 +88,11 @@ for i = 1:100
                              hcat(A1a, A1b),
                              hcat(zeros(3, 2),
                                   A2b)))
-        global nonstationary = any(abs.(eigen(A[backward_indices, backward_indices]).values) .> 1.0)
+        nonstationary = any(abs.(eigen(A[backward_indices, backward_indices]).values) .> 1.0)
     end
 
     A1 = A[backward_indices, backward_indices]
-    A2 = A[lre_ws.non_backward_indices, lre_ws.backward_indices]
+    A2 = A[lre_ws.non_backward_indices, backward_indices]
     global B = rand(endogenous_nbr, exogenous_nbr)
 
     B1 = B[backward_indices, :]
@@ -101,12 +100,13 @@ for i = 1:100
 
     global Σe = randn(exogenous_nbr, exogenous_nbr)
     Σe = transpose(Σe)*Σe
+    global Σyss = zeros(state_nbr, state_nbr)
+    wsl = LinearRationalExpectations.LyapdWs(state_nbr)
+    
+    LinearRationalExpectations.extended_lyapd!(Σyss, A1, B1*Σe*transpose(B1), wsl)
     global Σy = zeros(endogenous_nbr, endogenous_nbr)
     LinearRationalExpectations.compute_variance!(Σy, A1, A2, B1, B2, Σe, ws)
-    #=
-    @test Σy[4:6, 4:6]  ≈ A[4:6, 4:6]*Σy[4:6, 4:6]*transpose(A[4:6, 4:6]) + B[4:6, :]*Σe*transpose(B[4:6, :])
-    @test Σy[1:3, 1:3]  ≈ A[1:3, 4:6]*Σy[4:6, 4:6]*transpose(A[1:3, 4:6]) + B[1:3, :]*Σe*transpose(B[1:3, :])
-    @test Σy[4:6, 1:3]  ≈ A[4:6, 4:6]*Σy[4:6, 4:6]*transpose(A[1:3, 4:6]) + B[4:6, :]*Σe*transpose(B[1:3, :])
-    =#
-    @test Σy ≈ A*Σy*transpose(A) + B*Σe*transpose(B)
+    global sv = ws.stationary_variables
+    sv = [1, 2, 3, 6, 7, 8]
+    @test Σy[sv, sv] ≈ A[sv, sv]*Σy[sv, sv]*transpose(A[sv, sv]) + B[sv,:]*Σe*transpose(B[sv, :])
 end    

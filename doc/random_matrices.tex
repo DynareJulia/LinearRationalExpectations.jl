@@ -1,0 +1,61 @@
+\documentclass{article}
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+\begin{document}
+\section{2x2 complex matrix}
+Consider the matrix
+\[
+  \left[
+    \begin{array}{cc}
+      \alpha & \beta\\
+      \gamma & \delta
+    \end{array}
+  \right]
+\]
+The eigenvalues, $\lambda$, are solution of the characteristic equation
+\[
+  \alpha\delta(1-\lambda)^2 - \beta\gamma = \alpha\delta\lambda^2
+  -2\alpha\delta\lambda + \alpha\delta - \beta\gamma = 0
+\]
+The solution depends only on the value of the product $\alpha\delta$
+and we consider only the case $\delta=\alpha$ without loss of
+generality.
+
+\begin{align*}
+  \lambda &= \frac{2\alpha^2 \pm \sqrt{4\alpha^4 -
+            4\alpha^2(\alpha^2 - \beta\gamma)}}{2\alpha^2}\\
+  &  = \alpha \pm \sqrt{\beta\gamma}  
+\end{align*}
+
+There is a complex paire of eigenvalues if and only if $\beta$ and
+$\gamma$ have opposite sign. The modulus of the eigenvalues is
+\[
+  |\lambda| = \sqrt{\alpha^2 + |\beta\gamma|}
+\]
+There is a paire of complex unit roots when $\alpha^2 + \beta\gamma =
+1$ and the roots are smaller than one in modulus when $\alpha^2 + \beta\gamma <
+1$
+\begin{enumerate}
+\item Generating a random 2x2 matrix with a paire of complex unit
+  roots:
+  \begin{itemize}
+  \item Choose random $\alpha$ and $\beta$
+  \item Set $\gamma = -\frac{1 - \alpha^2}{\beta}$
+  \end{itemize}
+\item Generating a random 2x2 matrxi with a paire of roots smalle than
+  1 in modulus:
+  \begin{itemize}
+  \item Choose random $\alpha$ and $\beta$
+  \item If $\beta < 0$, choose random $\gamma$ over $]0; -\frac{1 -
+      \alpha^2}{\beta}[$,
+  \item else choose random $\gamma$ over $]-\frac{1 -
+      \alpha^2}{\beta}; 0[$
+  \end{itemize}
+\end{enumerate}
+\end{document}
+
+%%% Local Variables:
+%%% mode: latex
+%%% TeX-master: t
+%%% End:
