@@ -20,46 +20,47 @@ n = 10
 A = make_orthogonal_matrix(n) 
 @test A'*A ≈ I(n)
 
-function make_stationary_matrix_complex_roots(n::Int64, p::Float64; m::Float64 = 0.99)
+function make_complex2x2!(V::AbstractMatrix{Float64}, W::AbstractVector{Float64})
+    a = W[1]
+    b = W[2]
+    c = W[3]
+    V[1, 1] = V[2, 2] = a
+    V[2, 1] = b
+    x = abs(c)
+    V[1, 2] = (b < 0) ? x : -x
+end
+
+function make_stationary_matrix_complex_roots(n::Int64; p::Float64 = 1/5, m::Float64 = 0.99)
     Q = make_orthogonal_matrix(n)
     values = rand(-m:0.001:m, n)
-    V = BandedMatrix(Pair(-1, zeros(n)), Pair(0, values), Pair(1, zeros(n)))
-    pn = floor(p*n)
-    k = rand(1:n, pn)
+    V = BandedMatrix(Pair(-1, zeros(n - 1)), Pair(0, values), Pair(1, zeros(n - 1)))
+    pn = Integer(floor(p*n))
+    KK = rand(1:n, pn)
     W = randn(pn, 3)
-    @view mc = maximum(abs.(W[:, 3]))
-    for i in k
-        if k < n && V[k, k-1] == 0 && V[k, k+1] == 0
-            a = W[k, 1]
-            b = W[k, 2]
-            c = W[k, 3]
-            V[k, k] = V[k+1, k+1] = a
-            V[k + 1, k] = b
-            x = abs(c)/mc
-            V[k, k + 1] = (b < 0) ? x : -x
+    mc = maximum(abs.(view(W, :, 3)))
+    @views W[:, 3] ./= W[:, 3]/mc
+    @views for (i, k) in enumerate(KK)
+        if (k == 1 ||
+            (k < n && V[k, k-1] == 0 && V[k, k+1] == 0))
+            make_complex2x2!(V[k:k+1, k:k+1], W[i, :])
         end
     end
-                
-    return A
+    return Q*V
 end
+
 function make_ABΣe!(n, ns, nns, nx)
     state_nbr = ns + nns
     nonstate_nbr = n - nns - ns
-    nonstationary = true
-    local A::Matrix{Float64}
-    while nonstationary
-        A1a = triu(randn(nns, nns), 1) + I
-        A1b = randn(nns, ns)
-        A2a = randn(nonstate_nbr,  ns)
-        A2b = randn(ns, ns)
-        A = hcat(zeros(n, nonstate_nbr),
-                 vcat(hcat(zeros(nonstate_nbr, nns),
-                           A2a),
-                      hcat(A1a, A1b),
-                      hcat(zeros(ns, nns),
-                           A2b)))
-        nonstationary = any(abs.(eigen(A[backward_indices, backward_indices]).values) .> 1.0)
-    end
+    A1a = triu(randn(nns, nns), 1) + I
+    A1b = randn(nns, ns)
+    A2a = randn(nonstate_nbr, ns)
+    A2b = make_stationary_matrix_complex_roots(ns)
+    A = hcat(zeros(n, nonstate_nbr),
+             vcat(hcat(zeros(nonstate_nbr, nns),
+                       A2a),
+                  hcat(A1a, A1b),
+                  hcat(zeros(ns, nns),
+                       A2b)))
     B = rand(n, nx)
     Σe = randn(nx, nx)
     Σe = Σe*transpose(Σe)
@@ -107,12 +108,12 @@ lre_ws = LinearRationalExpectationsWs(algo,
                                       both_indices,
                                       static_indices)
 
-@btime ws = LinearRationalExpectations.LREVarianceWs(n,
-                                                     state_nbr,
-                                                     nx,
-                                                     lre_ws)
-ws = LinearRationalExpectations.LREVarianceWs(n,
-                                              state_nbr,
-                                              nx,
-                                              lre_ws)
+@btime ws = LinearRationalExpectations.VarianceWs(n,
+                                                  state_nbr,
+                                                  nx,
+                                                  lre_ws)
+ws = LinearRationalExpectations.VarianceWs(n,
+                                           state_nbr,
+                                           nx,
+                                           lre_ws)
 @btime LinearRationalExpectations.compute_variance!(Σy, A1, A2, B1, B2, Σe, ws)

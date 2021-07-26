@@ -20,7 +20,7 @@ lre_ws = LinearRationalExpectationsWs(algo,
 
 state_nbr = length(backward_indices)
 
-ws = LinearRationalExpectations.LREVarianceWs(endogenous_nbr,
+ws = LinearRationalExpectations.VarianceWs(endogenous_nbr,
                                               state_nbr,
                                               exogenous_nbr,
                                               lre_ws)
@@ -69,7 +69,7 @@ lre_ws = LinearRationalExpectationsWs(algo,
 
 state_nbr = length(backward_indices)
 
-ws = LinearRationalExpectations.LREVarianceWs(endogenous_nbr,
+ws = LinearRationalExpectations.VarianceWs(endogenous_nbr,
                                               state_nbr,
                                               exogenous_nbr,
                                               lre_ws)
@@ -109,4 +109,18 @@ for i = 1:100
     global sv = ws.stationary_variables
     sv = [1, 2, 3, 6, 7, 8]
     @test Σy[sv, sv] ≈ A[sv, sv]*Σy[sv, sv]*transpose(A[sv, sv]) + B[sv,:]*Σe*transpose(B[sv, :])
+    lre_results = LinearRationalExpectationsResults(endogenous_nbr, exogenous_nbr, state_nbr)
+    lre_results.gs1 .= A1
+    lre_results.gns1 .= A2
+    lre_results.hs1 .= B1
+    lre_results.hns1 .= B2
+    newΣy = similar(Σy)
+    LinearRationalExpectations.compute_variance!(newΣy, lre_results, Σe, ws) 
+    @test newΣy[sv, sv] ≈ Σy[sv, sv]
+
+    ws2 = LinearRationalExpectations.VarianceWs(endogenous_nbr,
+                                               endogenous_nbr,
+                                               exogenous_nbr,
+                                               lre_ws)
+
 end    

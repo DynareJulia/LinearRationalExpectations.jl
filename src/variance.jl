@@ -1,4 +1,4 @@
-struct LRENonstationaryVarianceWs
+struct NonstationaryVarianceWs
     rΣ_s_s::Matrix{Float64}
     rA1::Matrix{Float64}
     rA2::Matrix{Float64}
@@ -10,7 +10,7 @@ struct LRENonstationaryVarianceWs
     rΣ_ns_ns::Matrix{Float64}
     state_stationary_variables::Vector{Bool}
     nonstate_stationary_variables::Vector{Bool}
-    function LRENonstationaryVarianceWs(endogenous_nbr::Int64,
+    function NonstationaryVarianceWs(endogenous_nbr::Int64,
                                         exogenous_nbr::Int64,
                                         state_nbr::Int64,
                                         nonstationary_variables::Vector{Bool},
@@ -46,7 +46,7 @@ struct LRENonstationaryVarianceWs
     end
 end
 
-struct LREVarianceWs
+struct VarianceWs
     B1S::Matrix{Float64}
     B1SB1::Matrix{Float64}
     A2S::Matrix{Float64}
@@ -55,10 +55,10 @@ struct LREVarianceWs
     Σ_ns_s::Matrix{Float64}
     Σ_ns_ns::Matrix{Float64}
     stationary_variables::Vector{Bool}
-    nonstationary_ws::Vector{LRENonstationaryVarianceWs}
+    nonstationary_ws::Vector{NonstationaryVarianceWs}
     lre_ws::LinearRationalExpectationsWs
     lyapd_ws::LyapdWs
-    function LREVarianceWs(var_nbr::Int64, state_nbr::Int64,
+    function VarianceWs(var_nbr::Int64, state_nbr::Int64,
                            shock_nbr::Int64, lre_ws::LinearRationalExpectationsWs)
         nonstate_nbr = var_nbr - state_nbr
         B1S = Matrix{Float64}(undef, state_nbr, shock_nbr)
@@ -71,7 +71,7 @@ struct LREVarianceWs
         stationary_variables = Vector{Bool}(undef, var_nbr)
         state_stationary_variables = Vector{Bool}(undef, 0)
         nonstate_stationary_variables = Vector{Bool}(undef, 0)
-        nonstationary_ws = Vector{LRENonstationaryVarianceWs}(undef, 0)
+        nonstationary_ws = Vector{NonstationaryVarianceWs}(undef, 0)
         lyapd_ws = LyapdWs(state_nbr)
         new(B1S, B1SB1, A2S, B2S, Σ_s_s, Σ_ns_s, Σ_ns_ns,
             stationary_variables,
@@ -180,7 +180,7 @@ function compute_variance!(Σy::Matrix{Float64},
                            B1::AbstractVecOrMat{Float64},
                            B2::AbstractVecOrMat{Float64},
                            Σe::AbstractVecOrMat{Float64},
-                           ws::LREVarianceWs)
+                           ws::VarianceWs)
     n = size(Σy, 1)
     lre_ws = ws.lre_ws
     mul!(ws.B1S, B1, Σe)
@@ -194,7 +194,7 @@ function compute_variance!(Σy::Matrix{Float64},
                                   ws.Σ_ns_ns, lre_ws.backward_indices)
     else
         if length(ws.nonstationary_ws) == 0
-            nonstationary_ws = LRENonstationaryVarianceWs(lre_ws.endogenous_nbr,
+            nonstationary_ws = NonstationaryVarianceWs(lre_ws.endogenous_nbr,
                                                           lre_ws.exogenous_nbr,
                                                           lre_ws.backward_nbr,
                                                           ws.lyapd_ws.nonstationary_variables,
@@ -241,7 +241,20 @@ function compute_variance!(Σy::Matrix{Float64},
                                      nonstate_stationary_variables)
     end
 end
-    
+
+function compute_variance!(Σy::Matrix{Float64},
+                           lreresults::LinearRationalExpectationsResults,
+                           Σe::AbstractVecOrMat{Float64},
+                           ws::VarianceWs)
+    bwi = ws.lre_ws.backward_indices
+    nbwi = ws.lre_ws.non_backward_indices
+    A1 = lreresults.gs1
+    A2 = lreresults.gns1
+    B1 = lreresults.hs1
+    B2 = lreresults.hns1
+    compute_variance!(Σy, A1, A2, B1, B2, Σe, ws)
+end
+
 function stationary_variance_blocks!(Σ_ns_s, Σ_ns_ns, A1, A2, B1, B2, A2S, B2S, Σ_s_s, Σe)
     mul!(B2S, B2, Σe)
     mul!(Σ_ns_s, B2S, transpose(B1))
