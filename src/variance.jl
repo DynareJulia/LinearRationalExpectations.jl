@@ -86,12 +86,13 @@ function make_stationary_variance!(Σy::Matrix{Float64},
                                    Σ_ns_ns::Matrix{Float64},
                                    backward_indices)
     n = size(Σy, 1)
+    nb = length(backward_indices)
     m1 = m2 = 1
     @inbounds for i = 1:n
-        if i == backward_indices[m1]
+        if m1 <= nb && i == backward_indices[m1]
             k1 = k2 = 1
             for j = 1:n
-                if j == backward_indices[k1]
+                if k1 <= nb && j == backward_indices[k1]
                     Σy[j,i] = Σ_s_s[k1, m1]
                     k1 += 1
                 else
@@ -103,7 +104,7 @@ function make_stationary_variance!(Σy::Matrix{Float64},
         else
             k1 = k2 = 1
             for j = 1:n
-                if j == backward_indices[k1]
+                if k1 <= nb && j == backward_indices[k1]
                     Σy[j,i] = Σ_ns_s[m2, k1]
                     k1 += 1
                 else
