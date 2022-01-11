@@ -140,7 +140,7 @@ struct LinearRationalExpectationsWs
         colsUE = backward_nbr .+ findall(in(backward_indices), forward_indices)
         linsolve_static_ws = LinSolveWs(static_nbr)
         AGplusB = Matrix{Float64}(undef, endogenous_nbr, endogenous_nbr)
-        AGplusB_linsolve_ws = LinSolveAlgo.LinSolveWs(endogenous_nbr)
+        AGplusB_linsolve_ws = LinSolveWs(endogenous_nbr)
         #        if m.serially_correlated_exogenous
         #            eye_plus_at_kron_b_ws = EyePlusAtKronBWs(ma, mb, mc, 1)
         #        else
