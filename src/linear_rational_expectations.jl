@@ -324,7 +324,7 @@ function make_lu_AGplusB!(AGplusB::AbstractMatrix{Float64},
     mul!(ws.temp7, A, ws.temp3)
     vAG = view(AGplusB, :, ws.backward_indices)
     vAG .+= ws.temp7
-    LinSolveAlgo.lu!(AGplusB, ws.AGplusB_linsolve_ws)
+    FastLapackInterface.lu!(AGplusB, ws.AGplusB_linsolve_ws)
 end
 
 function solve_for_derivatives_with_respect_to_shocks!(results::LinearRationalExpectationsResults,
