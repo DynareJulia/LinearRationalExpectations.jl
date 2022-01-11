@@ -1,7 +1,5 @@
 using LinearAlgebra
 using FastLapackInterface
-using FastLapackInterface.LinSolveAlgo
-using FastLapackInterface.SchurAlgo
 
 struct LyapdWs
     AA::Matrix{Float64}

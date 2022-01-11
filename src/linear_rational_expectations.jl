@@ -1,7 +1,5 @@
 using LinearAlgebra
 using FastLapackInterface
-using FastLapackInterface.LinSolveAlgo
-using FastLapackInterface.QrAlgo
 using PolynomialMatrixEquations
 #using SolveEyePlusMinusAkronB: EyePlusAtKronBWs, generalized_sylvester_solver!
 
