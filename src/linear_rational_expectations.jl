@@ -83,7 +83,7 @@ struct LinearRationalExpectationsWs
         dynamic_indices = setdiff(collect(1:endogenous_nbr), static_indices)
         current_dynamic_indices = setdiff(current_indices, static_indices)
         purely_forward_indices = setdiff(forward_indices, both_indices)
-        non_backward_indices = union(purely_forward_indices, static_indices)
+        non_backward_indices = sort(union(purely_forward_indices, static_indices))
         forward_indices_d = findall(in(forward_indices), dynamic_indices)
         backward_indices_d = findall(in(backward_indices), dynamic_indices)
         current_dynamic_indices_d = findall(in(current_dynamic_indices), dynamic_indices)
@@ -188,7 +188,10 @@ struct LinearRationalExpectationsResults
     g1_1::SubArray{Float64, 2, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}}, true}
     # solution first order derivatives w.r. to current exogenous variables
     g1_2::SubArray{Float64, 2, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}}, true}
-#    g1_3::SubArray # solution first order derivatives w.r. to lagged exogenous variables
+    endogenous_variance::Matrix{Float64}
+    #    g1_3::SubArray # solution first order derivatives w.r. to lagged exogenous variables
+    stationary_variables::Vector{Bool}
+    variance_decomposition::Matrix{Float64}
     
     function LinearRationalExpectationsResults(endogenous_nbr::Int64,
                                                exogenous_nbr::Int64,
@@ -202,9 +205,12 @@ struct LinearRationalExpectationsResults
         hns1 = zeros(non_backward_nbr,exogenous_nbr)
         g1_1 = view(g1, :, 1:backward_nbr)
         g1_2 = view(g1, :, backward_nbr .+ (1:exogenous_nbr))
+        endogenous_variance = zeros(endogenous_nbr, endogenous_nbr)
+        stationary_variables = Vector{Bool}(undef, endogenous_nbr)
+        variance_decomposition = zeros(endogenous_nbr, exogenous_nbr)
+        new(g1, gs1, hs1, gns1, hns1, g1_1, g1_2, endogenous_variance, stationary_variables, variance_decomposition)
 #        g1_3 = view(g[1], :, backward_nbr + exogenous_nbr .+ lagged_exogenous_nbr)
 #        new(g, gs, g1_1, g1_2, g1_3, AGplusB, AGplusB_linsolve_ws)
-        new(g1, gs1, hs1, gns1, hns1, g1_1, g1_2)
     end
 end
 

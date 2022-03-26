@@ -128,8 +128,8 @@ function make_nonstationary_variance!(Σy::Matrix{Float64},
                                       nonstate_stationary_indices)
     n = size(Σy, 1)
     fill!(Σy, NaN)
-    m1 = m2 = 1
-    for i in state_indices
+    m1 = 1
+    for (m2, i) in enumerate(state_indices)
         if state_stationary_indices[m2]
             k1 = k2 = 1
             for j in state_indices
@@ -149,15 +149,14 @@ function make_nonstationary_variance!(Σy::Matrix{Float64},
             end
             m1 += 1
         end
-        m2 += 1
     end
-    m = 1
-    for i in nonstate_indices
-        if nonstate_stationary_indices[m]
+    m1 = 1
+    for (m2, i) in enumerate(nonstate_indices)
+        if nonstate_stationary_indices[m2]
             k1 = k2 = 1
             for j in state_indices
                 if state_stationary_indices[k2]
-                    Σy[j,i] = Σ_ns_s[m, k1]
+                    Σy[j,i] = Σ_ns_s[m1, k1]
                     k1 += 1
                 end
                 k2 += 1
@@ -165,12 +164,12 @@ function make_nonstationary_variance!(Σy::Matrix{Float64},
             k1 = k2 = 1
             for j in nonstate_indices
                 if nonstate_stationary_indices[k2]
-                    Σy[j,i] = Σ_ns_ns[k1, m]
+                    Σy[j,i] = Σ_ns_ns[k1, m1]
                     k1 += 1
                 end
                 k2 += 1
             end
-            m += 1
+            m1 += 1
         end
     end
 end
@@ -193,19 +192,37 @@ function compute_variance!(Σy::Matrix{Float64},
                                     B2, ws.A2S, ws.B2S, ws.Σ_s_s, Σe)
         make_stationary_variance!(Σy, ws.Σ_s_s, ws.Σ_ns_s,
                                   ws.Σ_ns_ns, lre_ws.backward_indices)
+        fill!(ws.stationary_variables, true)
     else
+        state_nbr = lre_ws.backward_nbr
+        state_indices = lre_ws.backward_indices
         if length(ws.nonstationary_ws) == 0
             nonstationary_ws = NonstationaryVarianceWs(lre_ws.endogenous_nbr,
-                                                          lre_ws.exogenous_nbr,
-                                                          lre_ws.backward_nbr,
-                                                          ws.lyapd_ws.nonstationary_variables,
-                                                          A2)
+                                                       lre_ws.exogenous_nbr,
+                                                       lre_ws.backward_nbr,
+                                                       ws.lyapd_ws.nonstationary_variables,
+                                                       A2)
             push!(ws.nonstationary_ws, nonstationary_ws)
         else
             nonstationary_ws = ws.nonstationary_ws[1]
         end
         state_stationary_variables = nonstationary_ws.state_stationary_variables
         nonstate_stationary_variables = nonstationary_ws.nonstate_stationary_variables
+        fill!(ws.stationary_variables, false)
+        m1 = m2 = 1
+        for i = 1:size(Σy, 1)
+            if m1 <= state_nbr && i == state_indices[m1]
+                if state_stationary_variables[m1]
+                    ws.stationary_variables[i] = true
+                end
+                m1 += 1
+            else
+                if nonstate_stationary_variables[m2]
+                    ws.stationary_variables[i] = true
+                end
+                m2 += 1
+            end
+        end
         rΣ_ns_s = nonstationary_ws.rΣ_ns_s
         rΣ_ns_ns = nonstationary_ws.rΣ_ns_ns
         rA1    = nonstationary_ws.rA1   
@@ -243,17 +260,33 @@ function compute_variance!(Σy::Matrix{Float64},
     end
 end
 
-function compute_variance!(Σy::Matrix{Float64},
-                           lreresults::LinearRationalExpectationsResults,
-                           Σe::AbstractVecOrMat{Float64},
-                           ws::VarianceWs)
-    bwi = ws.lre_ws.backward_indices
-    nbwi = ws.lre_ws.non_backward_indices
+function compute_variance!(
+    lreresults::LinearRationalExpectationsResults,
+    Σe::AbstractVecOrMat{Float64},
+    ws::VarianceWs
+)
     A1 = lreresults.gs1
     A2 = lreresults.gns1
     B1 = lreresults.hs1
     B2 = lreresults.hns1
-    compute_variance!(Σy, A1, A2, B1, B2, Σe, ws)
+    endogenous_variance = compute_variance!(lreresults.endogenous_variance, A1, A2, B1, B2, Σe, ws)
+    empty!(lreresults.stationary_variables)
+    append!(lreresults.stationary_variables, ws.stationary_variables)
+    return endogenous_variance
+end
+
+function compute_variance!(
+    variance::AbstractMatrix{Float64},
+    lreresults::LinearRationalExpectationsResults,
+    Σe::AbstractVecOrMat{Float64},
+    ws::VarianceWs
+)
+    A1 = lreresults.gs1
+    A2 = lreresults.gns1
+    B1 = lreresults.hs1
+    B2 = lreresults.hns1
+    endogenous_variance = compute_variance!(variance, A1, A2, B1, B2, Σe, ws)
+    return endogenous_variance
 end
 
 function stationary_variance_blocks!(Σ_ns_s, Σ_ns_ns, A1, A2, B1, B2, A2S, B2S, Σ_s_s, Σe)
@@ -263,4 +296,196 @@ function stationary_variance_blocks!(Σ_ns_s, Σ_ns_ns, A1, A2, B1, B2, A2S, B2S
     mul!(A2S, A2, Σ_s_s)
     mul!(Σ_ns_s, A2S, transpose(A1), 1.0, 1.0)
     mul!(Σ_ns_ns, A2S, transpose(A2), 1.0, 1.0)
+end
+
+"""
+    correlation!(c::AbstractMatrix{T}, v::AbstractMatrix{T}, sd::AbstractVector{T}) where T <: Real
+computes the correlation coefficients c[i,j] = v[i,j]/(sd[i]*sd[j])
+"""
+function correlation!(c::AbstractMatrix{T}, v::AbstractMatrix{T}, sd::AbstractVector{T}) where T <: Real
+    c .= v ./ (sd .* transpose(sd))
+end
+
+"""
+    correlation(v::AbstractMatrix{T}) where T <: Real
+returns the correlation coefficients v[i,j]/sqrt(v[i,i]*v[j,j])
+"""
+function correlation(v::AbstractMatrix{T}) where T
+    sd = sqrt.(diag(v))
+    c = similar(v)
+    correlation!(c, v, sd)
+end
+
+"""
+autocovariance!(av::Vector{<:AbstractMatrix{T}}, a::AbstractMatrix{T}, v::AbstractMatrix{T}, work1::AbstractMatrix{T}, work2::AbstractMatrix{T},order::Int64)
+
+returns a vector of autocovariance matrices E(y_t y_{t-i}') i = 1,...,i for an vector autoregressive process y_t = Ay_{t-1} + Be_t
+"""
+function autocovariance!(av::Vector{<:AbstractMatrix{T}},
+                         lre_results::LinearRationalExpectationsResults,
+                         S1a::AbstractMatrix{T},
+                         S1b::AbstractMatrix{T},
+                         S2::AbstractMatrix{T},
+                         backward_indices::Vector{Int64},
+                         stationary_variables::Vector{Bool}) where T <: Real
+    S1a .= view(lre_results.endogenous_variance, backward_indices, :)
+    for p in 1:length(av)
+        mul!(S1b, gs1, S1a)
+        mul!(S2, gns1, S1a)
+        @inbounds for i = 1:n
+            k1 = k2 = 1
+            for j = 1:n
+                if k1 <= nb && j == backward_indices[k1]
+                    av[p][j,i] = S1b[k1, i]
+                    k1 += 1
+                else
+                    av[p][j,i] = S2[k2, i]
+                    k2 += 1
+                end
+            end
+        end
+        tmp = S1a
+        S1a = S1b
+        S1b = tmp
+    end
+    return av
+end
+    
+"""
+autocovariance!(av::Vector{<:AbstractVector{T}}, a::AbstractMatrix{T}, v::AbstractMatrix{T}, work1::AbstractMatrix{T}, work2::AbstractMatrix{T},order::Int64)
+
+returns a vector of autocovariance vector with elements E(y_{j,t} y_{j,t-i}') j= 1,...,n and i = 1,...,i for an vector autoregressive process y_t = Ay_{t-1} + Be_t
+"""
+function autocovariance!(av::Vector{<:AbstractVector{T}},
+                         lre_results::LinearRationalExpectationsResults,
+                         S1a::AbstractMatrix{T},
+                         S1b::AbstractMatrix{T},
+                         S2::AbstractMatrix{T},
+                         backward_indices::Vector{Int64},
+                         stationary_variables::Vector{Bool}) where T <: Real
+    backward_stationary_indices = [i for i in backward_indices if stationary_variables[i]]
+    S1a .= view(lre_results.endogenous_variance, backward_stationary_indices, :)
+    n = length(av[1])
+    nb = length(backward_indices)
+    for i in 1:length(av)
+        mul!(S1b, lre_results.gs1, S1a)
+        mul!(S2, lre_results.gns1, S1a)
+        k1 = k2 = 1
+        for j = 1:n
+            if k1 <= nb && j == backward_indices[k1]
+                av[i][j] = S1b[k1, j]
+                k1 += 1
+            else
+                av[i][j] = S2[k2, j]
+                k2 += 1
+            end
+        end
+        tmp = S1a
+        S1a = S1b
+        S1b = tmp
+    end
+    return av
+end
+
+function autocorrelation!(ar::Vector{<:AbstractVecOrMat{T}},
+                          lre_results::LinearRationalExpectationsResults,
+                          S1a::AbstractMatrix{T},
+                          S1b::AbstractMatrix{T},
+                          S2::AbstractMatrix{T},
+                          backward_indices::Vector{Int64},
+                          stationary_variables::Vector{Bool}
+                          ) where T <: Real
+    autocovariance!(ar, lre_results, S1a, S1b, S2, backward_indices, stationary_variables)
+    n = length(stationary_variables)
+    dv = Vector{Float64}(undef, n)
+    for i = 1:n
+        dv[i] = lre_results.endogenous_variance[i, i]
+    end
+    autocorrelation!(ar, dv) 
+end
+
+"""
+    autocorrelation!(ar::Vector{<:AbstractMatrix{T}}. dv::AbstractVector{T}) where T
+returns a vector of autocorrelation matrices corresponging to the autocovariance matrices av
+"""
+function autocorrelation!(ar::Vector{<:AbstractMatrix{T}}, dv::AbstractVector{T}) where T
+    n, m = size(ar[1], 1)
+    for a in ar
+        for i = 1:n
+            for j = 1:m
+                a[j, i] ./= sqrt(dv[i]*dv[j])
+            end
+        end
+    end
+    return ar
+end
+        
+"""
+    autocorrelation!(ar::Vector{<:AbstractVector{T}}, dv::AbstractVector{T}) where T
+returns a vector of autocorrelation vectors corresponging to the autocovariance vector av
+"""
+function autocorrelation!(ar::Vector{<:AbstractVector{T}}, dv::AbstractVector{T}) where T
+    for a in ar
+        a ./= dv
+    end
+    return ar
+end
+        
+"""
+    autocorrelation!(ar::Vector{<:AbstractMatrix{T}}, av::Vector{<:AbstractMatrix{T}}, v::AbstractMatrix{T}) where T
+returns a vector of autocorrelation matrices corresponging to the autocovariance matrices av
+"""
+function autocorrelation!(ar::Vector{<:AbstractMatrix{T}}, av::Vector{<:AbstractMatrix{T}}, v::AbstractMatrix{T}) where T
+    n = size(v, 1)
+    dv = diag(v)
+    for (a1, a2) in zip(ar, av)
+        for i = 1:n
+            for j = 1:m
+                a1[i,j] .= a2[i, j] ./ sqrt(dv[i]*dv[j])
+            end
+        end
+    end
+    return ar
+end
+        
+"""
+    autocorrelation!(ar::Vector{<:AbstractVector{T}}, av::Vector{<:AbstractMatrix{T}}, v::AbstractMatrix{T}) where T
+returns a vector of autocorrelation vectors corresponging to the autocovariance vector av
+"""
+function autocorrelation!(ar::Vector{<:AbstractVector{T}}, av::Vector{<:AbstractMatrix{T}}, v::AbstractMatrix{T}) where T
+    for (a1, a2) in zip(ar, av)
+        a1 .= a2 ./ diag(v)
+    end
+    return ar
+end
+        
+function variance_decomposition!(
+    LRE_results::LinearRationalExpectationsResults,
+    Σe::AbstractMatrix{<:T},
+    variance::AbstractVector{<:T},
+    work1::AbstractMatrix{<:T},
+    work2::AbstractMatrix{<:T},
+    lre_variance_ws::LinearRationalExpectations.VarianceWs) where T
+    
+    nx = size(Σe, 1)
+    # force Σe to be positive definite
+    cs = cholesky(Σe + 1e-14*I).L
+    for i = 1:nx
+        fill!(work1, 0.0)
+        # use the vector for ith exogenous variable
+        vcs = view(cs, :, i)
+        work1 .= vcs*transpose(vcs)
+        compute_variance!(work2,
+                          LRE_results,
+                          work1,
+                          lre_variance_ws,
+                          )
+        k = [3, 4, 6]
+        A = LRE_results.g1_1
+        B = LRE_results.g1_2
+        for j = 1:size(LRE_results.variance_decomposition, 1)
+            view(LRE_results.variance_decomposition, j, i) .= work2[j, j]/variance[j]
+        end
+    end
+    return LRE_results.variance_decomposition
 end
