@@ -191,8 +191,6 @@ struct LinearRationalExpectationsResults
     endogenous_variance::Matrix{Float64}
     #    g1_3::SubArray # solution first order derivatives w.r. to lagged exogenous variables
     stationary_variables::Vector{Bool}
-    variance_decomposition::Matrix{Float64}
-    
     function LinearRationalExpectationsResults(endogenous_nbr::Int64,
                                                exogenous_nbr::Int64,
                                                backward_nbr::Int64)
@@ -207,8 +205,7 @@ struct LinearRationalExpectationsResults
         g1_2 = view(g1, :, backward_nbr .+ (1:exogenous_nbr))
         endogenous_variance = zeros(endogenous_nbr, endogenous_nbr)
         stationary_variables = Vector{Bool}(undef, endogenous_nbr)
-        variance_decomposition = zeros(endogenous_nbr, exogenous_nbr)
-        new(g1, gs1, hs1, gns1, hns1, g1_1, g1_2, endogenous_variance, stationary_variables, variance_decomposition)
+        new(g1, gs1, hs1, gns1, hns1, g1_1, g1_2, endogenous_variance, stationary_variables)
 #        g1_3 = view(g[1], :, backward_nbr + exogenous_nbr .+ lagged_exogenous_nbr)
 #        new(g, gs, g1_1, g1_2, g1_3, AGplusB, AGplusB_linsolve_ws)
     end

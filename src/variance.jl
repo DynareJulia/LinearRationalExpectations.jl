@@ -460,6 +460,7 @@ function autocorrelation!(ar::Vector{<:AbstractVector{T}}, av::Vector{<:Abstract
 end
         
 function variance_decomposition!(
+    VD::AbstractMatrix{<:T},
     LRE_results::LinearRationalExpectationsResults,
     Σe::AbstractMatrix{<:T},
     variance::AbstractVector{<:T},
@@ -483,9 +484,37 @@ function variance_decomposition!(
         k = [3, 4, 6]
         A = LRE_results.g1_1
         B = LRE_results.g1_2
-        for j = 1:size(LRE_results.variance_decomposition, 1)
-            view(LRE_results.variance_decomposition, j, i) .= work2[j, j]/variance[j]
+        for j = 1:size(VD, 1)
+            VD[j, i] = work2[j, j]/variance[j]
         end
     end
-    return LRE_results.variance_decomposition
+    return VD
 end
+
+function variance_decomposition(LREresults::LinearRationalExpectationsResults,
+                                LREws::LinearRationalExpectationsWs,
+                                Σe::Matrix{Float64},
+                                endogenous_nbr::Int64,
+                                exogenous_nbr::Int64,
+                                state_nbr::Int64)
+    VD = Matrix{Float64}(undef, endogenous_nbr, exogenous_nbr)
+    work1 = Matrix{Float64}(undef, exogenous_nbr, exogenous_nbr)
+    work2 = Matrix{Float64}(undef, endogenous_nbr, endogenous_nbr)
+    LREvariance_ws = VarianceWs(
+        endogenous_nbr,
+        state_nbr,
+        exogenous_nbr,
+        LREws,
+    )
+    VD = variance_decomposition!(
+        VD,
+        LREresults,
+        Σe,
+        diag(LREresults.endogenous_variance),
+        work1,
+        work2,
+        LREvariance_ws
+    )
+    return VD
+end
+                                 
