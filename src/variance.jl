@@ -329,9 +329,11 @@ function autocovariance!(av::Vector{<:AbstractMatrix{T}},
                          backward_indices::Vector{Int64},
                          stationary_variables::Vector{Bool}) where T <: Real
     S1a .= view(lre_results.endogenous_variance, backward_indices, :)
+    n = size(av[1], 1)
+    nb = length(backward_indices)
     for p in 1:length(av)
-        mul!(S1b, gs1, S1a)
-        mul!(S2, gns1, S1a)
+        mul!(S1b, lre_results.gs1, S1a)
+        mul!(S2, lre_results.gns1, S1a)
         @inbounds for i = 1:n
             k1 = k2 = 1
             for j = 1:n
