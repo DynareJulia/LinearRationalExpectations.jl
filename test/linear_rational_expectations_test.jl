@@ -7,7 +7,6 @@ function make_jacobian(ws)
                           + ws.forward_nbr
                           + ws.exogenous_nbr)
     for i = 1:1000
-        @show i
         Random.seed!(i)
         jacobian = randn(ws.endogenous_nbr,
                           ws.backward_nbr
@@ -58,12 +57,8 @@ FQ = LinearAlgebra.qr(jacobian_orig[:, [12, 14]])
 @test jacobian ≈ transpose(FQ.Q)*jacobian_orig
 
 LinearRationalExpectations.get_de!(ws, jacobian)
-@show ws.icolsE
-@show ws.jcolsE
 @test ws.d[1:8, 1] == zeros(8)
 @test ws.d[1:8, 2:10]  == jacobian[3:end, [8, 10, 11, 13, 15, 16, 17, 18, 19]]
-display(ws.e)
-display(-jacobian[3:8,1:9])
 @test ws.e[1:8, 1:8]  == -jacobian[3:end, [1, 2, 3, 4, 5, 6, 7, 9]]
 
 targetD = zeros(2, 10)
@@ -98,9 +93,6 @@ LinearRationalExpectations.add_static!(results, jacobian, ws)
 @test results.g1[ws.forward_indices, 1:ws.backward_nbr] ≈ ws.solver_ws.g2
 @test results.g1[ws.backward_indices, 1:ws.backward_nbr] ≈ ws.solver_ws.g1
 b10 = jacobian[1:ws.static_nbr, [12, 14]]
-@show ws.static_indices_j
-display(b10)
-display(ws.b10)
 @test ws.b10 ≈ b10
 target = -b10\(jacobian[1:ws.static_nbr, 15:19]
                *results.g1_1[ws.forward_indices,:]
@@ -133,8 +125,6 @@ for i in axes(target, 2)
 end
 @test target ≈ L*U 
 
-@show ws.exogenous_indices
-@show size(jacobian)
 LinearRationalExpectations.solve_for_derivatives_with_respect_to_shocks!(results, jacobian, ws)
 g1_2 = -AGplusB\jacobian[:, 20:22]
 @test results.g1_2 ≈ g1_2
@@ -169,13 +159,10 @@ g1_1 = results.g1_1
 g1_2 = results.g1_2
 gg = g1_1[ws.forward_indices, :]
 @test gg ≈ ws.solver_ws.g2
-display(A2*gg*g1_1[ws.backward_indices,:] + A1*g1_1[ws.current_indices,:] + A0)
 A2 = jacobian_orig[:, 15:19]
 A1 = jacobian_orig[:, 6:14]
 A0 = jacobian_orig[:, 1:5]
 B = jacobian_orig[:, 20:22]
-display(A2*gg*g1_1[ws.backward_indices,:] +
-        A1*g1_1[ws.current_indices,:] + A0)
 
 @test (A2*gg*g1_1[ws.backward_indices,:] +
        A1*g1_1[ws.current_indices,:] ≈ -A0 )
