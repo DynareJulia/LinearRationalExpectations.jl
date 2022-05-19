@@ -306,12 +306,13 @@ function correlation!(c::AbstractMatrix{T}, v::AbstractMatrix{T}, sd::AbstractVe
     c .= v ./ (sd .* transpose(sd))
 end
 
+robustsqrt(x) = sqrt(x + eps())
 """
     correlation(v::AbstractMatrix{T}) where T <: Real
 returns the correlation coefficients v[i,j]/sqrt(v[i,i]*v[j,j])
 """
 function correlation(v::AbstractMatrix{T}) where T
-    sd = sqrt.(diag(v))
+    sd = robustsqrt.(diag(v))
     c = similar(v)
     correlation!(c, v, sd)
 end
