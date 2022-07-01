@@ -179,11 +179,12 @@ Base.@kwdef struct LinearRationalExpectationsOptions
 end
 
 struct LinearRationalExpectationsResults
+    eigenvalues::Vector{Complex{Float64}}
     g1::Matrix{Float64}  # full approximation
     gs1::Matrix{Float64} # state transition matrices: states x states
     hs1::Matrix{Float64} # states x shocks
-    gns1::Matrix{Float64} # non states x state
-    hns1::Matrix{Float64} # non states x shocsk
+    gns1::Matrix{Float64} # non states x states
+    hns1::Matrix{Float64} # non states x shocsks
     # solution first order derivatives w.r. to state variables
     g1_1::SubArray{Float64, 2, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}}, true}
     # solution first order derivatives w.r. to current exogenous variables
@@ -196,6 +197,7 @@ struct LinearRationalExpectationsResults
                                                backward_nbr::Int64)
         state_nbr = backward_nbr + exogenous_nbr
         non_backward_nbr = endogenous_nbr - backward_nbr
+        eigenvalues = Vector{Float64}(undef, 0)
         g1 =  zeros(endogenous_nbr,(state_nbr + 1))
         gs1 = zeros(backward_nbr,backward_nbr)
         hs1 = zeros(backward_nbr,exogenous_nbr)
@@ -205,7 +207,7 @@ struct LinearRationalExpectationsResults
         g1_2 = view(g1, :, backward_nbr .+ (1:exogenous_nbr))
         endogenous_variance = zeros(endogenous_nbr, endogenous_nbr)
         stationary_variables = Vector{Bool}(undef, endogenous_nbr)
-        new(g1, gs1, hs1, gns1, hns1, g1_1, g1_2, endogenous_variance, stationary_variables)
+        new(eigenvalues, g1, gs1, hs1, gns1, hns1, g1_1, g1_2, endogenous_variance, stationary_variables)
 #        g1_3 = view(g[1], :, backward_nbr + exogenous_nbr .+ lagged_exogenous_nbr)
 #        new(g, gs, g1_1, g1_2, g1_3, AGplusB, AGplusB_linsolve_ws)
     end
@@ -373,8 +375,15 @@ function first_order_solver!(results::LinearRationalExpectationsResults,
         copy!(vg, vx)
     elseif algo == "GS"
         get_de!(ws, jacobian)
-        gs_solver!(ws.solver_ws, ws.d, ws.e, ws.backward_nbr,
-                   options.generalized_schur.criterium)
+        try
+            gs_solver!(ws.solver_ws, ws.d, ws.e, ws.backward_nbr,
+                       options.generalized_schur.criterium)
+        catch e
+            resize!(results.eigenvalues, length(ws.solver_ws.eigval))
+            copy!(results.eigenvalues, ws.solver_ws.eigval)
+            rethrow(e)
+        end
+
         results.gs1 .= ws.solver_ws.g1
         vs = view(ws.solver_ws.g1, 1:ws.backward_nbr, 1:ws.backward_nbr)
         vr = view(results.g1, ws.backward_indices,1:ws.backward_nbr)
@@ -384,6 +393,8 @@ function first_order_solver!(results::LinearRationalExpectationsResults,
                   .-ws.backward_nbr, :)
         vr = view(results.g1, ws.purely_forward_indices, 1:ws.backward_nbr)
         copy!(vr,vs)
+        resize!(results.eigenvalues, length(ws.solver_ws.eigval))
+        results.eigenvalues .= ws.solver_ws.eigval
     else
         error("Algorithm $algo not recognized")
     end
