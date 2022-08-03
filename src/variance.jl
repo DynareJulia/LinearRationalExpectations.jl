@@ -367,25 +367,27 @@ function autocovariance!(av::Vector{<:AbstractVector{T}},
                          backward_indices::Vector{Int64},
                          stationary_variables::Vector{Bool}) where T <: Real
     backward_stationary_indices = [i for i in backward_indices if stationary_variables[i]]
-    S1a .= view(lre_results.endogenous_variance, backward_stationary_indices, :)
+    variance = lre_results.endogenous_variance
+    nbsi = length(backward_stationary_indices)
+    vS1a = view(S1a, 1:nbsi, :)
+    vS1b = view(S1b, 1:nbsi, :)
+    vS1a .= view(variance, backward_stationary_indices, :)
     n = length(av[1])
     nb = length(backward_indices)
     for i in 1:length(av)
-        mul!(S1b, lre_results.gs1, S1a)
-        mul!(S2, lre_results.gns1, S1a)
+        mul!(vS1b, lre_results.gs1, vS1a)
+        mul!(S2, lre_results.gns1, vS1a)
         k1 = k2 = 1
         for j = 1:n
             if k1 <= nb && j == backward_indices[k1]
-                av[i][j] = S1b[k1, j]
+                av[i][j] = vS1b[k1, j]
                 k1 += 1
             else
                 av[i][j] = S2[k2, j]
                 k2 += 1
             end
         end
-        tmp = S1a
-        S1a = S1b
-        S1b = tmp
+        vS1a, vS1b = vS1b, vS1a
     end
     return av
 end
