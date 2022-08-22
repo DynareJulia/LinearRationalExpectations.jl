@@ -5,6 +5,7 @@ struct LyapdWs
     AA::Matrix{Float64}
     AAtemp::Matrix{Float64}
     AA2::Matrix{Float64}
+    AA2temp::Matrix{Float64}
     BB::Matrix{Float64}
     temp1::Matrix{Float64}
     XX::Vector{Float64}
@@ -15,17 +16,18 @@ struct LyapdWs
     linsolve_ws2::LUWs
     function LyapdWs(n::Int64)
         AA = Matrix{Float64}(undef, n, n)
-        AAtemp = Matrix{Float64}(undef, n, n)
-        AA2 = Matrix{Float64}(undef, 2*n, 2*n)
+        AAtemp = similar(AA, n, n)
+        AA2 = similar(AA, 2*n, 2*n)
+        AA2temp = similar(AA2)
         BB = similar(AA)
-        temp1 = Matrix{Float64}(undef, n, n)
-        XX = Vector{Float64}(undef, 2*n)
+        temp1 = similar(AA, n, n)
+        XX = similar(AA, 2*n)
         nonstationary_variables = Vector{Bool}(undef, n)
         nonstationary_trends = Vector{Bool}(undef, n)
         dgees_ws = SchurWs(AA)
         linsolve_ws1 = LUWs(n)
         linsolve_ws2 = LUWs(2*n)
-        new(AA, AAtemp, AA2, BB, temp1, XX, nonstationary_variables,
+        new(AA, AAtemp, AA2, AA2temp, BB, temp1, XX, nonstationary_variables,
             nonstationary_trends, dgees_ws, linsolve_ws1,
             linsolve_ws2)
     end
@@ -47,11 +49,9 @@ function solve_one_row!(X::AbstractMatrix{Float64},
     vX .= .-vB
     lu_t = LU(factorize!(ws.linsolve_ws1, vAA)...)
     ldiv!(lu_t, vX)
-    i = row
     j = n*(row - 1) + 1
-    while i < row*n
+    for i in row:n:row*n-1
         X[i] = X[j]
-        i += n
         j += 1
     end
 end
@@ -60,45 +60,40 @@ function solve_two_rows!(X::AbstractMatrix{Float64},
                          A::AbstractMatrix{Float64},
                          B::AbstractMatrix{Float64},
                          n::Int64, row::Int64, ws::LyapdWs)
-    α11, α21, α12, α22 = A[(row - 1):row, (row - 1):row]
-    l1 = 1
-    l2 = 1
-    while l1 <= row
-        k1 = 1
-        k2 = 1
-        while k1 <= row
-            ws.AA2[k2, l2] = α11*A[k1, l1]
-            ws.AA2[k2  + 1, l2] = α21*A[k1, l1]
-            ws.AA2[k2, l2 + 1] = α12*A[k1, l1]
-            ws.AA2[k2 + 1, l2 + 1] = α22*A[k1, l1]
-            k1 += 1
-            k2 += 2
+    @inbounds begin
+        α11, α21, α12, α22 = A[(row - 1):row, (row - 1):row]
+        l2 = 1
+        for l1 in 1:row
+            k2 = 1
+            for k1 in 1:row
+                ws.AA2[k2, l2] = α11*A[k1, l1]
+                ws.AA2[k2  + 1, l2] = α21*A[k1, l1]
+                ws.AA2[k2, l2 + 1] = α12*A[k1, l1]
+                ws.AA2[k2 + 1, l2 + 1] = α22*A[k1, l1]
+                k2 += 2
+            end
+            ws.XX[l2] = -B[row - 1, l1]
+            ws.XX[l2 + 1] = -B[row, l1]
+            l2 += 2
         end
-        ws.XX[l2] = -B[row - 1, l1]
-        ws.XX[l2 + 1] = -B[row, l1]
-        l1 += 1
-        l2 += 2
-    end
 
-    # TODO: cleanup!
-    vAA = collect(view(ws.AA2, 1:2*row, 1:2*row))
-    vAA .-= I(2*row)
-    view(ws.AA2, 1:2*row, 1:2*row) .= vAA
-    vXX = collect(view(ws.XX, 1:2*row))
-    lu_t = LU(factorize!(ws.linsolve_ws2, vAA)...)
-    ldiv!(lu_t, vXX)
-    view(ws.XX, 1:2*row) .= vXX
-    i = row - 1
-    j = n*(row - 2) + 1
-    m = 1
-    while i <= row*n
-        X[i] = vXX[m]
-        X[i + 1] = vXX[m+1]
-        X[j] = X[i]
-        X[j + n] = X[i+1]
-        i += n
-        j += 1
-        m += 2
+        # TODO: cleanup!
+        view(ws.AA2, 1:2*row, 1:2*row) .-= I(2*row)
+        vAA2 =  view(ws.AA2temp, 1:2*row, 1:2*row)
+        vAA2 .= view(ws.AA2, 1:2*row, 1:2*row)
+        lu_t = LU(factorize!(ws.linsolve_ws2, vAA2)...)
+        vXX = view(ws.XX, 1:2*row)
+        ldiv!(lu_t, vXX)
+        j = n*(row - 2) + 1
+        m = 1
+        for i in row-1:n:row*n
+            X[i] = vXX[m]
+            X[i + 1] = vXX[m+1]
+            X[j] = X[i]
+            X[j + n] = X[i+1]
+            j += 1
+            m += 2
+        end
     end
 end
 
