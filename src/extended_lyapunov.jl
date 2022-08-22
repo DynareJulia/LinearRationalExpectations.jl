@@ -10,9 +10,9 @@ struct LyapdWs
     XX::Vector{Float64}
     nonstationary_variables::Vector{Bool}
     nonstationary_trends::Vector{Bool}
-    dgees_ws::DgeesWs
-    linsolve_ws1::LinSolveWs
-    linsolve_ws2::LinSolveWs
+    dgees_ws::SchurWs
+    linsolve_ws1::LUWs
+    linsolve_ws2::LUWs
     function LyapdWs(n::Int64)
         AA = Matrix{Float64}(undef, n, n)
         AAtemp = Matrix{Float64}(undef, n, n)
@@ -22,9 +22,9 @@ struct LyapdWs
         XX = Vector{Float64}(undef, 2*n)
         nonstationary_variables = Vector{Bool}(undef, n)
         nonstationary_trends = Vector{Bool}(undef, n)
-        dgees_ws = DgeesWs(n)
-        linsolve_ws1 = LinSolveWs(n)
-        linsolve_ws2 = LinSolveWs(2*n)
+        dgees_ws = SchurWs(AA)
+        linsolve_ws1 = LUWs(n)
+        linsolve_ws2 = LUWs(2*n)
         new(AA, AAtemp, AA2, BB, temp1, XX, nonstationary_variables,
             nonstationary_trends, dgees_ws, linsolve_ws1,
             linsolve_ws2)
@@ -45,7 +45,8 @@ function solve_one_row!(X::AbstractMatrix{Float64},
     vX = view(X, 1:row, row)
     vB = view(B, 1:row, row)
     vX .= .-vB
-    linsolve_core!(vAA, vX, ws.linsolve_ws1)
+    lu_t = LU(factorize!(ws.linsolve_ws1, vAA)...)
+    ldiv!(lu_t, vX)
     i = row
     j = n*(row - 1) + 1
     while i < row*n
@@ -78,10 +79,15 @@ function solve_two_rows!(X::AbstractMatrix{Float64},
         l1 += 1
         l2 += 2
     end
-    vAA = view(ws.AA2, 1:2*row, 1:2*row)           
+
+    # TODO: cleanup!
+    vAA = collect(view(ws.AA2, 1:2*row, 1:2*row))
     vAA .-= I(2*row)
-    vXX = view(ws.XX, 1:2*row)
-    linsolve_core!(vAA, vXX, ws.linsolve_ws2)
+    view(ws.AA2, 1:2*row, 1:2*row) .= vAA
+    vXX = collect(view(ws.XX, 1:2*row))
+    lu_t = LU(factorize!(ws.linsolve_ws2, vAA)...)
+    ldiv!(lu_t, vXX)
+    view(ws.XX, 1:2*row) .= vXX
     i = row - 1
     j = n*(row - 2) + 1
     m = 1
@@ -105,7 +111,7 @@ function extended_lyapd!(Σ::AbstractMatrix{Float64},
                          ws::LyapdWs)
     n = size(A, 1)
     copy!(ws.AA, A)
-    dgees!(ws.dgees_ws, ws.AA, >, 1-1e-6)
+    factorize!(ws.dgees_ws, 'V', ws.AA, select = (wr, wi) -> wr^2 + wi^2 > 1-1e-6)
     mul!(ws.temp1, transpose(ws.dgees_ws.vs), B)
     mul!(ws.BB, ws.temp1, ws.dgees_ws.vs)
 

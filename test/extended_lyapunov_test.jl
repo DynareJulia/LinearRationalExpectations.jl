@@ -1,7 +1,7 @@
 using LinearAlgebra
 using Random
 using Test
-
+Random.seed!(123)
 n = 5
 Xorig = randn(n, n)
 A = UpperTriangular(rand(n, n))

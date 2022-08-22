@@ -105,14 +105,13 @@ target = -b10\(jacobian[1:ws.static_nbr, 15:19]
 A = randn(10, 5)
 B = randn(10, 9) 
 G = randn(endogenous_nbr, length(backward_indices))
-LinearRationalExpectations.make_lu_AGplusB!(ws.AGplusB, A, G, B, ws)
+lu_t = LU(LinearRationalExpectations.make_lu_AGplusB!(ws.AGplusB, A, G, B, ws)...)
 AGplusB = zeros(endogenous_nbr, endogenous_nbr)
 AGplusB[:, 2:10] = B 
 AGplusB[:, [1, 4, 6, 7, 9]] += A*G[[2, 3, 5, 7, 9], :]
 @test AGplusB ≈ ws.AGplusB
-LU = reshape(ws.AGplusB_linsolve_ws.lu, endogenous_nbr, endogenous_nbr)
-U = triu(LU)
-L = tril(LU, -1) + diagm(ones(10))
+U = triu(lu_t.factors)
+L = tril(lu_t.factors, -1) + diagm(ones(10))
 
 function swaprow!(x, i, j)
     for k in axes(x, 2)

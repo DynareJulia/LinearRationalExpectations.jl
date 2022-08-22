@@ -1,4 +1,4 @@
-using LinearAlgebra
+using LinearAlgebra.LAPACK: geqrf!, ormqr!
 using FastLapackInterface
 using PolynomialMatrixEquations
 #using SolveEyePlusMinusAkronB: EyePlusAtKronBWs, generalized_sylvester_solver!
@@ -32,7 +32,7 @@ struct LinearRationalExpectationsWs
     both_nbr::Int64
     current_nbr::Int64
     jacobian_static::Matrix{Float64} 
-    qr_ws::QrWs
+    qr_ws::QRWs
     solver_ws::Union{GsSolverWs, CyclicReductionWs}
     a::Matrix{Float64}
     b::Matrix{Float64}
@@ -61,8 +61,8 @@ struct LinearRationalExpectationsWs
     colsUD::Vector{Int64}
     colsUE::Vector{Int64}
     AGplusB::Matrix{Float64}
-    linsolve_static_ws::LinSolveWs
-    AGplusB_linsolve_ws::LinSolveWs
+    linsolve_static_ws::LUWs
+    AGplusB_linsolve_ws::LUWs
     #    eye_plus_at_kron_b_ws::EyePlusAtKronBWs
     
     function LinearRationalExpectationsWs(algo::String,
@@ -91,12 +91,12 @@ struct LinearRationalExpectationsWs
         exogenous_indices = backward_nbr + current_nbr + forward_nbr .+ (1:exogenous_nbr)
         jacobian_static = Matrix{Float64}(undef, endogenous_nbr, static_nbr)
         static_indices_j = backward_nbr .+ [findfirst(isequal(x), current_indices) for x in static_indices] 
-        qr_ws = QrWs(jacobian_static)
+        qr_ws = QRWs(jacobian_static)
         if algo == "GS"
             de_order = forward_nbr + backward_nbr
             d = zeros(de_order, de_order)
             e = similar(d)
-            solver_ws = GsSolverWs(d, e, backward_nbr)
+            solver_ws = GsSolverWs(d, backward_nbr)
             a = Matrix{Float64}(undef, 0, 0)
             b = similar(a)
             c = similar(a)
@@ -138,9 +138,9 @@ struct LinearRationalExpectationsWs
         jcolsE = [1:backward_nbr; backward_nbr .+ k2b]
         colsUD = findall(in(forward_indices), backward_indices)
         colsUE = backward_nbr .+ findall(in(backward_indices), forward_indices)
-        linsolve_static_ws = LinSolveWs(static_nbr)
+        linsolve_static_ws = LUWs(static_nbr)
         AGplusB = Matrix{Float64}(undef, endogenous_nbr, endogenous_nbr)
-        AGplusB_linsolve_ws = LinSolveWs(endogenous_nbr)
+        AGplusB_linsolve_ws = LUWs(endogenous_nbr)
         #        if m.serially_correlated_exogenous
         #            eye_plus_at_kron_b_ws = EyePlusAtKronBWs(ma, mb, mc, 1)
         #        else
@@ -225,8 +225,8 @@ ws: FirstOrderWs workspace. On exit contains the triangular part conrresponding
 function remove_static!(jacobian::Matrix{Float64},
                         ws::LinearRationalExpectationsWs)
     ws.jacobian_static .= view(jacobian, :, ws.static_indices_j)
-    geqrf_core!(ws.jacobian_static, ws.qr_ws)
-    ormqr_core!('L', ws.jacobian_static', jacobian, ws.qr_ws)
+    geqrf!(ws.qr_ws, ws.jacobian_static)
+    ormqr!(ws.qr_ws, 'L', 'T', ws.jacobian_static, jacobian)
 end
 
 """
@@ -263,7 +263,8 @@ function add_static!(results::LinearRationalExpectationsResults,
     mul!(ws.temp6, ws.temp1, ws.temp3)
     mul!(ws.temp2, ws.temp6, results.gs1, -1.0, -1.0)
     # ws.temp3 = B_s,s\ws.temp2
-    linsolve_core!(ws.b10, ws.temp2, ws.linsolve_static_ws)
+    lu_t = LU(factorize!(ws.linsolve_static_ws, ws.b10)...)
+    ldiv!(lu_t, ws.temp2)
     vg = view(results.g1, ws.static_indices, 1:ws.backward_nbr)
     copy!(vg, ws.temp2)
 end
@@ -329,7 +330,7 @@ function make_lu_AGplusB!(AGplusB::AbstractMatrix{Float64},
     mul!(ws.temp7, A, ws.temp3)
     vAG = view(AGplusB, :, ws.backward_indices)
     vAG .+= ws.temp7
-    FastLapackInterface.lu!(AGplusB, ws.AGplusB_linsolve_ws)
+    factorize!(ws.AGplusB_linsolve_ws, copy(AGplusB))
 end
 
 function solve_for_derivatives_with_respect_to_shocks!(results::LinearRationalExpectationsResults,
@@ -352,7 +353,8 @@ function solve_for_derivatives_with_respect_to_shocks!(results::LinearRationalEx
 #        if ws.serially_correlated_exogenous
             # TO BE DONE
         #        else
-        linsolve_core_no_lu!(ws.AGplusB, results.g1_2, ws.AGplusB_linsolve_ws)
+        lu_t = LU(factorize!(ws.AGplusB_linsolve_ws, ws.AGplusB)...)
+        ldiv!(lu_t, results.g1_2)
 #        end
     end
 end
@@ -379,8 +381,8 @@ function first_order_solver!(results::LinearRationalExpectationsResults,
             gs_solver!(ws.solver_ws, ws.d, ws.e, ws.backward_nbr,
                        options.generalized_schur.criterium)
         catch e
-            resize!(results.eigenvalues, length(ws.solver_ws.eigval))
-            copy!(results.eigenvalues, ws.solver_ws.eigval)
+            resize!(results.eigenvalues, length(ws.solver_ws.schurws.eigen_values))
+            copy!(results.eigenvalues, ws.solver_ws.eigen_values)
             rethrow(e)
         end
 
@@ -393,8 +395,8 @@ function first_order_solver!(results::LinearRationalExpectationsResults,
                   .-ws.backward_nbr, :)
         vr = view(results.g1, ws.purely_forward_indices, 1:ws.backward_nbr)
         copy!(vr,vs)
-        resize!(results.eigenvalues, length(ws.solver_ws.eigval))
-        results.eigenvalues .= ws.solver_ws.eigval
+        resize!(results.eigenvalues, length(ws.solver_ws.schurws.eigen_values))
+        results.eigenvalues .= ws.solver_ws.schurws.eigen_values
     else
         error("Algorithm $algo not recognized")
     end

@@ -31,7 +31,7 @@ struct BackwardLinearRationalExpectationsWs
     both_nbr::Int64
     current_nbr::Int64
     jacobian_static::Matrix{Float64} 
-    qr_ws::QrWs
+    qr_ws::QRWs
     solver_ws::Union{GsSolverWs, CyclicReductionWs}
     a::Matrix{Float64}
     b::Matrix{Float64}
@@ -60,8 +60,8 @@ struct BackwardLinearRationalExpectationsWs
     colsUD::Vector{Int64}
     colsUE::Vector{Int64}
     AGplusB::Matrix{Float64}
-    linsolve_static_ws::LinSolveWs
-    AGplusB_linsolve_ws::LinSolveWs
+    linsolve_static_ws::LUWs
+    AGplusB_linsolve_ws::LUWs
     #    eye_plus_at_kron_b_ws::EyePlusAtKronBWs
     
     function BackwardLinearRationalExpectationsWs(algo::String,
@@ -89,11 +89,11 @@ struct BackwardLinearRationalExpectationsWs
         exogenous_indices = backward_nbr + current_nbr + forward_nbr .+ (1:exogenous_nbr)
         if static_nbr > 0
             jacobian_static = Matrix{Float64}(undef, endogenous_nbr, static_nbr)
-            qr_ws = QrWs(jacobian_static)
+            qr_ws = QRWs(jacobian_static)
             static_indices_j = backward_nbr .+ [findfirst(isequal(x), current_indices) for x in static_indices] 
 #        else
 #            jacobian_static = Matrix{Float64}(undef, 0,0)
-#            qr_ws = QrWs(Matrix{Float64}(undef, 0,0))
+#            qr_ws = QRWs(Matrix{Float64}(undef, 0,0))
         end
         if algo == "GS"
             de_order = forward_nbr + backward_nbr
@@ -141,9 +141,9 @@ struct BackwardLinearRationalExpectationsWs
         jcolsE = [1:backward_nbr; backward_nbr .+ k2b]
         colsUD = findall(in(forward_indices), backward_indices)
         colsUE = backward_nbr .+ findall(in(backward_indices), forward_indices)
-        linsolve_static_ws = LinSolveWs(static_nbr)
+        linsolve_static_ws = LUWs(static_nbr)
         AGplusB = Matrix{Float64}(undef, endogenous_nbr, endogenous_nbr)
-        AGplusB_linsolve_ws = LinSolveWs(endogenous_nbr)
+        AGplusB_linsolve_ws = LUWs(endogenous_nbr)
         #        if m.serially_correlated_exogenous
         #            eye_plus_at_kron_b_ws = EyePlusAtKronBWs(ma, mb, mc, 1)
         #        else
@@ -210,7 +210,7 @@ function add_static!(results::BackwardLinearRationalExpectationsResults,
         end
     end
     # C_s
-    @inbounds for i = 1:ws.bacward_nbr
+    @inbounds for i = 1:ws.backward_nbr
         k = ws.backward_nbr + ws.current_nbr + i
         for j = 1:ws.static_nbr
             ws.temp1[j, i] = jacobian[j, k]
@@ -240,7 +240,8 @@ function add_static!(results::BackwardLinearRationalExpectationsResults,
     mul!(ws.temp6, ws.temp2, ws.temp3)
     mul!(ws.temp1, ws.temp6, results.gs1, -1.0, -1.0)
     # ws.temp3 = B_s,s\ws.temp1
-    linsolve_core!(ws.b10, ws.temp1, ws.linsolve_static_ws)
+    lu_t = LU(factorize!(ws.linsolve_static_ws, ws.b10)...)
+    ldiv!(lu_t, ws.temp1)
     @inbounds for i = 1:ws.backward_nbr
         for j=1:ws.static_nbr
             results.g1[ws.static_indices[j],i] = ws.temp1[j,i]
@@ -340,7 +341,7 @@ function make_lu_AGplusB!(AGplusB, A, G, B, ws)
     vAGplusB = view(AGplusB, :, ws.backward_indices)
     vAGplusB .+= ws.temp7
         =#
-    LinSolveAlgo.lu!(AGplusB, ws.AGplusB_linsolve_ws)
+    factorize!(ws.AGplusB_linsolve_ws, copy(AGplusB))
 end
 
 function solve_for_derivatives_with_respect_to_shocks!(results::LinearRationalExpectationsResults, jacobian::AbstractMatrix, ws::LinearRationalExpectationsWs)
@@ -367,7 +368,8 @@ function solve_for_derivatives_with_respect_to_shocks!(results::LinearRationalEx
 #        if ws.serially_correlated_exogenous
             # TO BE DONE
         #        else
-        linsolve_core_no_lu!(ws.AGplusB, results.g1_2, ws.AGplusB_linsolve_ws)
+        #TODO: Will not work
+        # linsolve_core_no_lu!(ws.AGplusB, results.g1_2, ws.AGplusB_linsolve_ws)
 #        end
     end
 end

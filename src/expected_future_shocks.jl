@@ -42,7 +42,8 @@ function h0!(h0::AbstractMatrix{Float64}, a::AbstractMatrix{Float64},
         h0[m] = 1.0
         m += n + 1
     end
-    @inbounds linsolve_core!(work, h0, linsolve_ws)
+    lu_t = LU(factorize!(linsolve_ws, work)...)
+    ldiv!(lu_t, h0)
     if any(isnan.(h0))
         if any(isnan.(a))
             throw(ArgumentError("NaN in a"))
