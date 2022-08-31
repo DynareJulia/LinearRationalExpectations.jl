@@ -11,4 +11,4 @@ PolynomialMatrixEquations = "4f9d485d-518f-41ed-81c8-372cd804c93b"
 [compat]
 julia = "1.6.3"
 FastLapackInterface = "^1.2.5"
-PolynomialMatrixEquations = "0.1.0"
+PolynomialMatrixEquations = "0.2.0"

@@ -1,3 +1,8 @@
+0.3.0
+=====
+- swtich to FastLapackInterface v1
+- refactor code accordingly
+
 0.2.2
 =====
 - fix bug in computation of autocovariance
