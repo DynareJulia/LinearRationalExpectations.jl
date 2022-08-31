@@ -24,7 +24,6 @@ Pkg.develop(Pkg.PackageSpec(; path = ROOTPATH))
 Pkg.instantiate()
 
 # Import packages for docs generation
-using LinearRationalEquations
 using LinearAlgebra
 using LinearAlgebra: LAPACK
 using Documenter
