@@ -5,7 +5,7 @@ rational expectations models.
 
 Linear rational expectations models have the general form
 
-E_t \{ A y_{t+1} + B y_t + C y_{t-1} + D u_t + e\} = 0
+$$E_t \{ A y_{t+1} + B y_t + C y_{t-1} + D u_t + e\} = 0$$
 
 The deterministic steady state of the model is defined as
 
