@@ -5,7 +5,7 @@ using PolynomialMatrixEquations
 
 using LinearAlgebra.BLAS
 
-struct LinearRationalExpectationsWs
+mutable struct LinearRationalExpectationsWs
     algo::String
     endogenous_nbr::Int64
     exogenous_nbr::Int64
@@ -178,7 +178,7 @@ Base.@kwdef struct LinearRationalExpectationsOptions
     generalized_schur::GeneralizedSchurOptions = GeneralizedSchurOptions()
 end
 
-struct LinearRationalExpectationsResults
+mutable struct LinearRationalExpectationsResults
     eigenvalues::Vector{Complex{Float64}}
     g1::Matrix{Float64}  # full approximation
     gs1::Matrix{Float64} # state transition matrices: states x states
@@ -236,37 +236,36 @@ G_y,static = -B_s,s^{-1}(A_s*Gy,fwrd*Gs + B_s,d*Gy,dynamic + C_s)
 function add_static!(results::LinearRationalExpectationsResults,
                      jacobian::Matrix{Float64},
                      ws::LinearRationalExpectationsWs)
-    # static rows are at the top of the QR transformed Jacobian matrix
-    # B_s,s
-    fill!(ws.b10, 0.0)
-    vj = view(jacobian, 1:ws.static_nbr, ws.static_indices_j)
-    copy!(ws.b10, vj)
-    # B_s,d
-    vb = view(ws.b11, :, ws.current_dynamic_indices_d)
-    vj = view(jacobian, 1:ws.static_nbr, ws.current_dynamic_indices_d_j)
-    copy!(vb, vj)
-    # A_s
-    vj = view(jacobian, 1:ws.static_nbr, ws.backward_nbr + ws.current_nbr .+ (1:ws.forward_nbr))
-    copy!(ws.temp1, vj) 
-    # C_s
-    vj = view(jacobian, 1:ws.static_nbr, 1:ws.backward_nbr)
-    copy!(ws.temp2, vj)
-    # Gy.fwrd
-    vg = view(results.g1_1, ws.forward_indices, 1:ws.backward_nbr)
-    copy!(ws.temp3, vg)
-    # Gy.dynamic
-    vg = view(results.g1_1, ws.dynamic_indices, 1:ws.backward_nbr)
-    copy!(ws.temp4, vg)
-    # ws.temp2 = B_s,d*Gy.dynamic + C_s
-    mul!(ws.temp2, ws.b11, ws.temp4, 1.0, 1.0)
-    # ws.temp6 = A_s*Gy.fwrd*gs1
-    mul!(ws.temp6, ws.temp1, ws.temp3)
-    mul!(ws.temp2, ws.temp6, results.gs1, -1.0, -1.0)
-    # ws.temp3 = B_s,s\ws.temp2
-    lu_t = LU(factorize!(ws.linsolve_static_ws, ws.b10)...)
-    ldiv!(lu_t, ws.temp2)
-    vg = view(results.g1, ws.static_indices, 1:ws.backward_nbr)
-    copy!(vg, ws.temp2)
+    @views @inbounds begin
+        # static rows are at the top of the QR transformed Jacobian matrix
+        # B_s,s
+        # fill!(ws.b10, 0.0)
+        stat_r = 1:ws.static_nbr
+        back_r = 1:ws.backward_nbr
+        # B_s,d
+        ws.b10 .= jacobian[stat_r, ws.static_indices_j]
+        ws.b11[:, ws.current_dynamic_indices_d] .= jacobian[stat_r, ws.current_dynamic_indices_d_j]
+        # A_s
+        ws.temp1 .= jacobian[stat_r, ws.backward_nbr + ws.current_nbr .+ (1:ws.forward_nbr)]
+        # C_s
+        ws.temp2 .= jacobian[stat_r, back_r]
+        # Gy.fwrd
+        ws.temp3 .= results.g1_1[ws.forward_indices, back_r]
+        # Gy.dynamic
+        ws.temp4 .= results.g1_1[ws.dynamic_indices, back_r]
+        # ws.temp2 = B_s,d*Gy.dynamic + C_s
+        mul!(ws.temp2, ws.b11, ws.temp4, 1.0, 1.0)
+        # ws.temp6 = A_s*Gy.fwrd*gs1
+        mul!(ws.temp6, ws.temp1, ws.temp3)
+        mul!(ws.temp2, ws.temp6, results.gs1, -1.0, -1.0)
+        # ws.temp3 = B_s,s\ws.temp2
+        
+        lu_t = LU(factorize!(ws.linsolve_static_ws, ws.b10)...)
+        ldiv!(lu_t, ws.temp2)
+        
+        results.g1[ws.static_indices, back_r] .= ws.temp2
+    end
+    return results.g1, jacobian
 end
 
 function get_abc!(ws::LinearRationalExpectationsWs,
@@ -275,62 +274,48 @@ function get_abc!(ws::LinearRationalExpectationsWs,
     fill!(ws.b, 0.0)
     fill!(ws.c, 0.0)
 
-    va = view(ws.a, :, ws.forward_indices_d)
-    vj = view(jacobian, ws.static_nbr .+ (1:ws.dynamic_nbr),
-              ws.backward_nbr + ws.current_nbr .+ (1:ws.forward_nbr))
-    copy!(va, vj)
-    vb = view(ws.b, :, ws.current_dynamic_indices_d)
-    vj = view(jacobian, ws.static_nbr .+ (1:ws.dynamic_nbr),
-              ws.current_dynamic_indices_d_j)
-    copy!(vb, vj)
-    vc = view(ws.c, :, ws.backward_indices_d)
-    vj = view(jacobian, ws.static_nbr .+ (1:ws.dynamic_nbr),
-              1:ws.backward_nbr)
-    copy!(vc, vj)
+    dyn_r = ws.static_nbr .+ (1:ws.dynamic_nbr)
+    @views @inbounds begin
+        ws.a[:, ws.forward_indices_d]         .= jacobian[dyn_r, ws.backward_nbr + ws.current_nbr .+ (1:ws.forward_nbr)]
+        ws.b[:, ws.current_dynamic_indices_d] .= jacobian[dyn_r, ws.current_dynamic_indices_d_j]
+        ws.c[:, ws.backward_indices_d]        .= jacobian[dyn_r, 1:ws.backward_nbr]
+    end
+    return ws.a, ws.b, ws.c
 end
 
 function get_de!(ws::LinearRationalExpectationsWs,
                  jacobian::AbstractMatrix{Float64})
-    n1 = ws.backward_nbr + ws.forward_nbr - ws.both_nbr
     fill!(ws.d, 0.0)
     fill!(ws.e, 0.0)
-    vd = view(ws.d, 1:ws.dynamic_nbr, ws.icolsD)
-    vj = view(jacobian, ws.static_nbr .+ (1:ws.dynamic_nbr),
-              ws.jcolsD)
-    copy!(vd, vj)
-    ve = view(ws.e, 1:ws.dynamic_nbr, ws.icolsE)
-    vj = view(jacobian, ws.static_nbr .+ (1:ws.dynamic_nbr),
-              ws.jcolsE)
-    ve .= .-vj
-    for i = 1:ws.both_nbr
-        k = ws.dynamic_nbr + i
-        m = ws.colsUD[i]
-        ws.d[k, m] = 1.0
+    r = ws.static_nbr .+ (1:ws.dynamic_nbr)
+    dyn_r  = 1:ws.dynamic_nbr
+    both_r = 1:ws.both_nbr
+    @views @inbounds begin
+        ws.d[dyn_r, ws.icolsD] .=  jacobian[r, ws.jcolsD]
+        ws.e[dyn_r, ws.icolsE] .=  .- jacobian[r, ws.jcolsE]
+        for i = both_r 
+            k = ws.dynamic_nbr + i
+            ws.d[k, ws.colsUD[i]] = 1.0
+            ws.e[k, ws.colsUE[i]] = 1.0
+        end
     end
-    for i = 1:ws.both_nbr
-        k = ws.dynamic_nbr + i
-        m = ws.colsUE[i]
-        ws.e[k, m] = 1.0
-    end
+    return ws.d, ws.e
 end
 
-"""
-Computes LU decomposition of A*G + B
-"""
-function make_lu_AGplusB!(AGplusB::AbstractMatrix{Float64},
+function make_AGplusB!(AGplusB::AbstractMatrix{Float64},
                           A::AbstractMatrix{Float64},
                           G::AbstractMatrix{Float64},
                           B::AbstractMatrix{Float64},
                           ws::LinearRationalExpectationsWs)
     fill!(AGplusB, 0.0)
-    vAG = view(AGplusB, :, ws.current_indices)
-    copy!(vAG, B)
-    vG = view(G, ws.forward_indices, :)
-    copy!(ws.temp3, vG)
-    mul!(ws.temp7, A, ws.temp3)
-    vAG = view(AGplusB, :, ws.backward_indices)
-    vAG .+= ws.temp7
-    factorize!(ws.AGplusB_linsolve_ws, copy(AGplusB))
+    @views @inbounds begin
+        AGplusB[:, ws.current_indices] .= B
+        ws.temp3 .= G[ws.forward_indices, :]
+        mul!(ws.temp7, A, ws.temp3)
+        AGplusB[:, ws.backward_indices] .+= ws.temp7
+        return AGplusB
+    end
+    
 end
 
 function solve_for_derivatives_with_respect_to_shocks!(results::LinearRationalExpectationsResults,
@@ -365,60 +350,50 @@ function first_order_solver!(results::LinearRationalExpectationsResults,
                              options::LinearRationalExpectationsOptions,
                              ws::LinearRationalExpectationsWs)
     remove_static!(jacobian, ws)
-    if algo == "CR"
-        get_abc!(ws, jacobian)
-        cyclic_reduction!(ws.x, ws.c, ws.b, ws.a, ws.solver_ws,
-                          options.cyclic_reduction.tol, options.cyclic_reduction.maxiter)
-        vg = view(results.gs1, :, 1:ws.backward_nbr)
-        vx = view(ws.x, ws.backward_indices_d, ws.backward_indices_d)
-        copy!(vg, vx)
-        vg = view(results.g1,ws.dynamic_indices, 1:ws.backward_nbr)
-        vx = view(ws.x, :, ws.backward_indices_d)
-        copy!(vg, vx)
-    elseif algo == "GS"
-        get_de!(ws, jacobian)
-        try
-            gs_solver!(ws.solver_ws, ws.d, ws.e, ws.backward_nbr,
-                       options.generalized_schur.criterium)
-        catch e
-            resize!(results.eigenvalues, length(ws.solver_ws.schurws.eigen_values))
-            copy!(results.eigenvalues, ws.solver_ws.eigen_values)
-            rethrow(e)
-        end
+    back_r     = 1:ws.backward_nbr
+    back_ids   = ws.backward_indices
+    back_ids_d = ws.backward_indices_d
+    dyn_ids    = ws.dynamic_indices
+    pur_for_ids = ws.purely_forward_indices
+    @views @inbounds begin
+        if algo == "CR"
+            ws.a, ws.b, ws.c = get_abc!(ws, jacobian)
+            cyclic_reduction!(ws.x, ws.c, ws.b, ws.a, ws.solver_ws,
+                              options.cyclic_reduction.tol, options.cyclic_reduction.maxiter)
+            results.gs1[:, back_r] .= ws.x[back_ids_d, back_ids_d]
+            results.g1[dyn_ids, back_r] .= ws.x[:, back_ids_d]
+        elseif algo == "GS"
+            ws.d, ws.e = get_de!(ws, jacobian)
+            try
+                gs_solver!(ws.solver_ws, ws.d, ws.e, ws.backward_nbr,
+                           options.generalized_schur.criterium)
+            catch e
+                resize!(results.eigenvalues, length(ws.solver_ws.schurws.eigen_values))
+                copy!(results.eigenvalues, ws.solver_ws.eigen_values)
+                rethrow(e)
+            end
 
-        results.gs1 .= ws.solver_ws.g1
-        vs = view(ws.solver_ws.g1, 1:ws.backward_nbr, 1:ws.backward_nbr)
-        vr = view(results.g1, ws.backward_indices,1:ws.backward_nbr)
-        copy!(vr,vs)
-        vs = view(ws.solver_ws.g2,
-                  ws.icolsE[ws.backward_nbr .+ (1:(ws.forward_nbr - ws.both_nbr))]
-                  .-ws.backward_nbr, :)
-        vr = view(results.g1, ws.purely_forward_indices, 1:ws.backward_nbr)
-        copy!(vr,vs)
-        resize!(results.eigenvalues, length(ws.solver_ws.schurws.eigen_values))
-        results.eigenvalues .= ws.solver_ws.schurws.eigen_values
-    else
-        error("Algorithm $algo not recognized")
+            results.gs1 .= ws.solver_ws.g1
+            results.g1[back_ids, back_r] .= ws.solver_ws.g1[back_r, back_r]
+            results.g1[pur_for_ids, back_r] .= ws.solver_ws.g2[ws.icolsE[ws.backward_nbr .+ (1:(ws.forward_nbr - ws.both_nbr))] .- ws.backward_nbr, :]
+            resize!(results.eigenvalues, length(ws.solver_ws.schurws.eigen_values))
+            results.eigenvalues .= ws.solver_ws.schurws.eigen_values
+        else
+            error("Algorithm $algo not recognized")
+        end
+        if ws.static_nbr > 0
+            results.g1, jacobian = add_static!(results, jacobian, ws)
+        end
+        #    A = view(jacobian, :, ws.backward_nbr + ws.current_nbr .+ (1:ws.forward_nbr))
+        #    B = view(jacobian, :, ws.backward_nbr .+ ws.current_indices)
+        ws.temp8[:, 1:ws.forward_nbr] .= jacobian[:, ws.backward_nbr + ws.current_nbr .+ (1:ws.forward_nbr)]
+        ws.temp9[:, 1:ws.current_nbr] .= jacobian[:, ws.backward_nbr .+ (1:ws.current_nbr)]
+        ws.AGplusB = make_AGplusB!(ws.AGplusB, ws.temp8, results.g1_1, ws.temp9, ws)        
+        solve_for_derivatives_with_respect_to_shocks!(results, jacobian, ws)
+        results.hs1 .= results.g1_2[back_ids, :]
+        results.gns1 .= results.g1_1[ws.non_backward_indices, :]
+        results.hns1 .= results.g1_2[ws.non_backward_indices, :]
     end
-    if ws.static_nbr > 0
-        add_static!(results, jacobian, ws)
-    end
-    #    A = view(jacobian, :, ws.backward_nbr + ws.current_nbr .+ (1:ws.forward_nbr))
-    #    B = view(jacobian, :, ws.backward_nbr .+ ws.current_indices)
-    vt = view(ws.temp8, :, 1:ws.forward_nbr)
-    vj = view(jacobian, :, ws.backward_nbr + ws.current_nbr .+ (1:ws.forward_nbr))
-    copy!(vt, vj)
-    vt = view(ws.temp9, :, 1:ws.current_nbr)
-    vj = view(jacobian, :, ws.backward_nbr .+ (1:ws.current_nbr))
-    copy!(vt, vj)
-    make_lu_AGplusB!(ws.AGplusB, ws.temp8, results.g1_1, ws.temp9, ws)        
-    solve_for_derivatives_with_respect_to_shocks!(results, jacobian, ws)
-    vh = view(results.g1_2, ws.backward_indices, :)
-    results.hs1 .= vh
-    vgns = view(results.g1_1, ws.non_backward_indices, :)
-    results.gns1 .= vgns
-    vhns = view(results.g1_2, ws.non_backward_indices, :)
-    results.hns1 .= vhns
 end
 
 
