@@ -191,15 +191,15 @@ function compute_variance!(Σy::Matrix{Float64},
         stationary_variance_blocks!(ws.Σ_ns_s, ws.Σ_ns_ns, A1, A2, B1,
                                     B2, ws.A2S, ws.B2S, ws.Σ_s_s, Σe)
         make_stationary_variance!(Σy, ws.Σ_s_s, ws.Σ_ns_s,
-                                  ws.Σ_ns_ns, lre_ws.backward_indices)
+                                  ws.Σ_ns_ns, lre_ws.indices.backward)
         fill!(ws.stationary_variables, true)
     else
-        state_nbr = lre_ws.backward_nbr
-        state_indices = lre_ws.backward_indices
+        state_nbr = n_backward(lre_ws.indices)
+        state_indices = lre_ws.indices.backward
         if length(ws.nonstationary_ws) == 0
-            nonstationary_ws = NonstationaryVarianceWs(lre_ws.endogenous_nbr,
-                                                       lre_ws.exogenous_nbr,
-                                                       lre_ws.backward_nbr,
+            nonstationary_ws = NonstationaryVarianceWs(n_endogenous(lre_ws.indices),
+                                                       n_exogenous(lre_ws.indices),
+                                                       n_backward(lre_ws.indices),
                                                        ws.lyapd_ws.nonstationary_variables,
                                                        A2)
             push!(ws.nonstationary_ws, nonstationary_ws)
@@ -253,9 +253,9 @@ function compute_variance!(Σy::Matrix{Float64},
                                      rΣ_s_s,
                                      rΣ_ns_s,
                                      rΣ_ns_ns,
-                                     lre_ws.backward_indices,
+                                     lre_ws.indices.backward,
                                      state_stationary_variables,
-                                     lre_ws.non_backward_indices,
+                                     lre_ws.indices.non_backward,
                                      nonstate_stationary_variables)
     end
 end

@@ -1,23 +1,24 @@
 using Random
+using LinearRationalExpectations: n_backward, n_forward, n_both, n_static, n_dynamic, n_current, n_exogenous
 
 function make_jacobian(ws)
-    jacobian_orig = zeros(ws.endogenous_nbr,
-                          ws.backward_nbr
-                          + ws.current_nbr
-                          + ws.forward_nbr
-                          + ws.exogenous_nbr)
+    jacobian_orig = zeros(ws.indices.n_endogenous,
+                          n_backward(ws.indices)
+                          + n_current(ws.indices)
+                          + n_forward(ws.indices)
+                          + n_exogenous(ws.indices))
     for i = 1:1000
         Random.seed!(i)
-        jacobian = randn(ws.endogenous_nbr,
-                          ws.backward_nbr
-                          + ws.current_nbr
-                          + ws.forward_nbr
-                         + ws.exogenous_nbr)
+        jacobian = rand(ws.indices.n_endogenous,
+                          n_backward(ws.indices)
+                          + n_current(ws.indices)
+                          + n_forward(ws.indices)
+                          + n_exogenous(ws.indices))
         copy!(jacobian_orig, jacobian)
         LinearRationalExpectations.remove_static!(jacobian, ws)
         LinearRationalExpectations.get_de!(ws, jacobian)
         F = schur(ws.e, ws.d)
-        if count(abs.(F.α ./ F.β) .> 1.0) == ws.forward_nbr
+        if count(abs.(F.α ./ F.β) .> 1.0) == n_forward(ws.indices)
             break
         end
     end
@@ -28,7 +29,6 @@ algo = "GS"
 
 endogenous_nbr = 10
 exogenous_nbr = 3
-exogenous_deterministic_nbr = 0
 forward_indices = [2, 3, 5, 7, 9]
 current_indices = collect(2:10)
 backward_indices = [1, 4, 6, 7, 9]
@@ -37,19 +37,16 @@ static_indices = [8, 10]
 
 
 ws = LinearRationalExpectationsWs(algo,
-                                  endogenous_nbr,
                                   exogenous_nbr,
-                                  exogenous_deterministic_nbr,
                                   forward_indices,
                                   current_indices,
                                   backward_indices,
-                                  both_indices,
                                   static_indices)
-@test ws.static_indices_j == [12, 14]
+@test ws.indices.current_in_static_jacobian == [12, 14]
 
 results = LinearRationalExpectationsResults(endogenous_nbr,
                                             exogenous_nbr,
-                                            ws.backward_nbr)
+                                            n_backward(ws.indices))
 jacobian = make_jacobian(ws)
 jacobian_orig = copy(jacobian)
 LinearRationalExpectations.remove_static!(jacobian, ws)
@@ -73,34 +70,37 @@ targetE[2, 10] = 1.0
 d_orig = copy(ws.d)
 e_orig = copy(ws.e)
 options = LinearRationalExpectationsOptions()
-LinearRationalExpectations.PolynomialMatrixEquations.gs_solver!(ws.solver_ws, ws.d, ws.e, ws.backward_nbr, options.generalized_schur.criterium)
-@test d_orig * vcat(I(ws.backward_nbr), ws.solver_ws.g2[:, 1:ws.backward_nbr])*ws.solver_ws.g1 ≈ e_orig * vcat(I(ws.backward_nbr), ws.solver_ws.g2[:, 1:ws.backward_nbr])
+n_back = n_backward(ws.indices)
+back_r = 1:n_back
+LinearRationalExpectations.PolynomialMatrixEquations.gs_solver!(ws.solver_ws, ws.d, ws.e, n_back, options.generalized_schur.criterium)
+@test d_orig * vcat(I(n_back), ws.solver_ws.g2[:, back_r])*ws.solver_ws.g1 ≈ e_orig * vcat(I(n_back), ws.solver_ws.g2[:, back_r])
 
 results.gs1 .= ws.solver_ws.g1
-for i = 1:ws.backward_nbr
-    for j = 1:ws.backward_nbr
+for i = back_r
+    for j = back_r
         x = ws.solver_ws.g1[j,i]
-        results.g1[ws.backward_indices[j],i] = x
+        results.g1[ws.indices.backward[j],i] = x
     end
-    for j = 1:(ws.forward_nbr - ws.both_nbr)
-        results.g1[ws.purely_forward_indices[j], i] =
-            ws.solver_ws.g2[ws.icolsE[ws.backward_nbr + j] - ws.backward_nbr, i]
+    for j = 1:(n_forward(ws.indices) - n_both(ws.indices))
+        results.g1[ws.indices.purely_forward[j], i] =
+            ws.solver_ws.g2[ws.indices.E_columns.E[n_back + j] - n_back, i]
     end
 end
 
+n_stat = n_static(ws.indices)
 LinearRationalExpectations.add_static!(results, jacobian, ws)
-@test ws.b11[:, 2:8] ≈ jacobian[1:ws.static_nbr, [6, 7, 8, 9, 10, 11, 13]]
-@test results.g1[ws.forward_indices, 1:ws.backward_nbr] ≈ ws.solver_ws.g2
-@test results.g1[ws.backward_indices, 1:ws.backward_nbr] ≈ ws.solver_ws.g1
-b10 = jacobian[1:ws.static_nbr, [12, 14]]
+@test ws.b11[:, 2:8] ≈ jacobian[1:n_stat, [6, 7, 8, 9, 10, 11, 13]]
+@test results.g1[ws.indices.forward, back_r] ≈ ws.solver_ws.g2
+@test results.g1[ws.indices.backward, back_r] ≈ ws.solver_ws.g1
+b10 = jacobian[1:n_stat, [12, 14]]
 @test ws.b10 ≈ b10
-target = -b10\(jacobian[1:ws.static_nbr, 15:19]
-               *results.g1_1[ws.forward_indices,:]
+target = -b10\(jacobian[1:n_stat, 15:19]
+               *results.g1_1[ws.indices.forward,:]
                *results.gs1
-               + jacobian[1:ws.static_nbr, [6, 7, 8, 9, 10, 11, 13]]
+               + jacobian[1:n_stat, [6, 7, 8, 9, 10, 11, 13]]
                *results.g1_1[[2, 3, 4, 5, 6, 7, 9], :]
-               + jacobian[1:ws.static_nbr, 1:ws.backward_nbr])
-@test results.g1[ws.static_indices, 1:ws.backward_nbr] ≈ target
+               + jacobian[1:n_stat, back_r])
+@test results.g1[ws.indices.static, back_r] ≈ target
 
 A = randn(10, 5)
 B = randn(10, 9) 
@@ -131,18 +131,15 @@ g1_2 = -AGplusB\jacobian[:, 20:22]
 
 algo = "GS"
 ws = LinearRationalExpectationsWs(algo,
-                                  endogenous_nbr,
                                   exogenous_nbr,
-                                  exogenous_deterministic_nbr,
                                   forward_indices,
                                   current_indices,
                                   backward_indices,
-                                  both_indices,
                                   static_indices)
 jacobian = make_jacobian(ws)
 jacobian_orig = copy(jacobian)
 first_order_solver!(results, algo, jacobian, options, ws)
-@test d_orig * vcat(I(ws.backward_nbr), ws.solver_ws.g2[:, 1:ws.backward_nbr])*ws.solver_ws.g1 ≈ e_orig * vcat(I(ws.backward_nbr), ws.solver_ws.g2[:, 1:ws.backward_nbr])
+@test d_orig * vcat(I(n_backward(ws.indices)), ws.solver_ws.g2[:, 1:n_backward(ws.indices)])*ws.solver_ws.g1 ≈ e_orig * vcat(I(n_backward(ws.indices)), ws.solver_ws.g2[:, 1:n_backward(ws.indices)])
 A2 = jacobian[:, 15:19]
 A1 = jacobian[:, 6:14]
 A0 = jacobian[:, 1:5]
@@ -152,32 +149,29 @@ A0 = jacobian[:, 1:5]
 @test A0[3:10, :] ≈ -e_orig[1:8, 1:5]
 @test d_orig[1:8, 1] ≈ zeros(8, 1)
 @test e_orig[1:8, 9:10] ≈ zeros(8, 2)
-@test results.g1[ws.forward_indices, 1:ws.backward_nbr] ≈ ws.solver_ws.g2
-@test results.g1[ws.backward_indices, 1:ws.backward_nbr] ≈ ws.solver_ws.g1
+@test results.g1[ws.indices.forward, back_r] ≈ ws.solver_ws.g2
+@test results.g1[ws.indices.backward, back_r] ≈ ws.solver_ws.g1
 g1_1 = results.g1_1
 g1_2 = results.g1_2
-gg = g1_1[ws.forward_indices, :]
+gg = g1_1[ws.indices.forward, :]
 @test gg ≈ ws.solver_ws.g2
 A2 = jacobian_orig[:, 15:19]
 A1 = jacobian_orig[:, 6:14]
 A0 = jacobian_orig[:, 1:5]
 B = jacobian_orig[:, 20:22]
 
-@test (A2*gg*g1_1[ws.backward_indices,:] +
-       A1*g1_1[ws.current_indices,:] ≈ -A0 )
-@test (A2*gg*g1_2[ws.backward_indices,:] +
-       A1*g1_2[ws.current_indices,:] ≈ -B )
+@test (A2*gg*g1_1[ws.indices.backward,:] +
+       A1*g1_1[ws.indices.current,:] ≈ -A0 )
+@test (A2*gg*g1_2[ws.indices.backward,:] +
+       A1*g1_2[ws.indices.current,:] ≈ -B )
 
                              
 algo = "CR"
 ws = LinearRationalExpectationsWs(algo,
-                                  endogenous_nbr,
                                   exogenous_nbr,
-                                  exogenous_deterministic_nbr,
                                   forward_indices,
                                   current_indices,
                                   backward_indices,
-                                  both_indices,
                                   static_indices)
 LinearRationalExpectations.get_abc!(ws, jacobian)
 @test ws.a[:, [2, 3, 5, 7, 8]] == jacobian[3:end, 15:19]

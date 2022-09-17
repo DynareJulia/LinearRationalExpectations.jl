@@ -5,32 +5,111 @@ using PolynomialMatrixEquations
 
 using LinearAlgebra.BLAS
 
+struct Indices
+    current        ::Vector{Int}
+    forward        ::Vector{Int}
+    purely_forward ::Vector{Int}
+    backward       ::Vector{Int}
+    both           ::Vector{Int}
+    non_backward   ::Vector{Int} #union(purely_forward, static)
+    
+    static          ::Vector{Int}
+    dynamic         ::Vector{Int}
+    dynamic_current ::Vector{Int}
+    
+    current_in_dynamic ::Vector{Int} #ids of dynamic that are current
+    forward_in_dynamic ::Vector{Int} #ids of dynamic that are forward
+    backward_in_dynamic::Vector{Int} #ids of dynamic that are backward
+
+    current_in_dynamic_jacobian ::Vector{Int}
+    current_in_static_jacobian  ::Vector{Int}
+    
+    exogenous   ::Vector{Int}
+    n_endogenous ::Int
+
+    D_columns::NamedTuple{(:D, :jacobian), NTuple{2, Vector{Int}}}
+    E_columns::NamedTuple{(:E, :jacobian), NTuple{2, Vector{Int}}}
+    UD_columns::Vector{Int}
+    UE_columns::Vector{Int}
+    
+end
+
+function Indices(n_exogenous::Int, forward::Vector{Int}, current::Vector{Int}, backward::Vector{Int}, static::Vector{Int})
+    n_forward  = length(forward)
+    n_backward = length(backward)
+    n_current  = length(current)
+    
+    n_endogenous = maximum(Iterators.flatten((forward, backward, current)))
+    exogenous = n_backward + n_current + n_forward .+ (1:n_exogenous)
+    
+    both            = intersect(forward, backward)
+    dynamic         = setdiff(collect(1:n_endogenous), static)
+    current_dynamic = setdiff(current, static)
+    purely_forward  = setdiff(forward, both)
+    non_backward    = sort(union(purely_forward, static))
+    
+    forward_in_dynamic          = findall(in(forward), dynamic)
+    backward_in_dynamic         = findall(in(backward), dynamic)
+    current_in_dynamic          = findall(in(current_dynamic), dynamic)
+    current_in_dynamic_jacobian = n_backward .+ findall(in(dynamic), current)
+    current_in_static_jacobian  = n_backward .+ [findfirst(isequal(x), current) for x in static]
+
+    # derivatives of current values of variables that are both
+    # forward and backward are included in the D matrix
+    k1 = findall(in(current), backward)
+    k2a = findall(in(purely_forward), forward)
+    k2b = findall(in(purely_forward), current)
+
+    D_columns = (D        = [k1; n_backward .+ (1:n_forward)],
+                 jacobian = [n_backward .+ findall(in(backward), current);
+                             n_backward + n_current .+ (1:n_forward)])
+
+    E_columns = (E        = [1:n_backward; n_backward .+ k2a],
+                 jacobian = [1:n_backward; n_backward .+ k2b])
+    
+    UD_columns = findall(in(forward), backward)
+    UE_columns = n_backward .+ findall(in(backward), forward)
+    
+    return Indices(
+        current,
+        forward,
+        purely_forward,
+        backward,
+        both,
+        non_backward,
+
+        static,
+        dynamic,
+        current_dynamic,
+
+        current_in_dynamic,
+        forward_in_dynamic,
+        backward_in_dynamic,
+        current_in_dynamic_jacobian,
+        current_in_static_jacobian,
+        
+        exogenous,
+        n_endogenous,
+
+        D_columns,
+        E_columns,
+        UD_columns,
+        UE_columns,
+    )
+end
+
+n_static(i::Indices)     = length(i.static)
+n_forward(i::Indices)    = length(i.forward)
+n_backward(i::Indices)   = length(i.backward)
+n_both(i::Indices)       = length(i.both)
+n_current(i::Indices)    = length(i.current)
+n_dynamic(i::Indices)    = length(i.dynamic)
+n_endogenous(i::Indices) = i.n_endogenous
+n_exogenous(i::Indices) = length(i.exogenous)
+
 mutable struct LinearRationalExpectationsWs
     algo::String
-    endogenous_nbr::Int64
-    exogenous_nbr::Int64
-    exogenous_deterministic_nbr::Int64
-    forward_indices::Vector{Int64}
-    purely_forward_indices::Vector{Int64}
-    current_indices::Vector{Int64}
-    backward_indices::Vector{Int64}
-    both_indices::Vector{Int64}
-    static_indices::Vector{Int64}
-    dynamic_indices::Vector{Int64}
-    non_backward_indices::Vector{Int64}
-    current_dynamic_indices::Vector{Int64}
-    forward_indices_d::Vector{Int64}
-    backward_indices_d::Vector{Int64}
-    current_dynamic_indices_d::Vector{Int64}
-    current_dynamic_indices_d_j::Vector{Int64}
-    exogenous_indices::Vector{Int64}
-    static_indices_j::Vector{Int64}
-    static_nbr::Int64
-    dynamic_nbr::Int64
-    forward_nbr::Int64
-    backward_nbr::Int64
-    both_nbr::Int64
-    current_nbr::Int64
+    indices::Indices
     jacobian_static::Matrix{Float64} 
     qr_ws::QRWs
     solver_ws::Union{GsSolverWs, CyclicReductionWs}
@@ -54,111 +133,68 @@ mutable struct LinearRationalExpectationsWs
     temp9::Matrix{Float64}
     b10::Matrix{Float64}
     b11::Matrix{Float64}
-    icolsD::Vector{Int64}
-    icolsE::Vector{Int64}
-    jcolsD::Vector{Int64}
-    jcolsE::Vector{Int64}
-    colsUD::Vector{Int64}
-    colsUE::Vector{Int64}
     AGplusB::Matrix{Float64}
     linsolve_static_ws::LUWs
     AGplusB_linsolve_ws::LUWs
     #    eye_plus_at_kron_b_ws::EyePlusAtKronBWs
     
-    function LinearRationalExpectationsWs(algo::String,
-                                          endogenous_nbr::Int64,
-                                          exogenous_nbr::Int64,
-                                          exogenous_deterministic_nbr::Int64,
-                                          forward_indices::Vector{Int64},
-                                          current_indices::Vector{Int64},
-                                          backward_indices::Vector{Int64},
-                                          both_indices::Vector{Int64},
-                                          static_indices::Vector{Int64})
-        static_nbr = length(static_indices)
-        forward_nbr = length(forward_indices)
-        backward_nbr = length(backward_indices)
-        both_nbr = length(both_indices)
-        current_nbr = length(current_indices)
-        dynamic_nbr = endogenous_nbr - static_nbr
-        dynamic_indices = setdiff(collect(1:endogenous_nbr), static_indices)
-        current_dynamic_indices = setdiff(current_indices, static_indices)
-        purely_forward_indices = setdiff(forward_indices, both_indices)
-        non_backward_indices = sort(union(purely_forward_indices, static_indices))
-        forward_indices_d = findall(in(forward_indices), dynamic_indices)
-        backward_indices_d = findall(in(backward_indices), dynamic_indices)
-        current_dynamic_indices_d = findall(in(current_dynamic_indices), dynamic_indices)
-        current_dynamic_indices_d_j = backward_nbr .+ findall(in(dynamic_indices), current_indices)
-        exogenous_indices = backward_nbr + current_nbr + forward_nbr .+ (1:exogenous_nbr)
-        jacobian_static = Matrix{Float64}(undef, endogenous_nbr, static_nbr)
-        static_indices_j = backward_nbr .+ [findfirst(isequal(x), current_indices) for x in static_indices] 
+    function LinearRationalExpectationsWs(algo::String, args...)
+        indices = Indices(args...)
+        n_back = n_backward(indices)
+        n_stat = n_static(indices)
+        n_forw = n_forward(indices)
+        n_dyn  = n_dynamic(indices)
+        n_ex   = n_exogenous(indices)
+        n_end  = n_endogenous(indices)
+        n_curr = n_current(indices)
+        
+        jacobian_static = Matrix{Float64}(undef, n_endogenous(indices), n_static(indices))
+         
         qr_ws = QRWs(jacobian_static)
         if algo == "GS"
-            de_order = forward_nbr + backward_nbr
+            de_order = n_forward(indices) + n_back
             d = zeros(de_order, de_order)
             e = similar(d)
-            solver_ws = GsSolverWs(d, backward_nbr)
+            solver_ws = GsSolverWs(d, n_back)
             a = Matrix{Float64}(undef, 0, 0)
             b = similar(a)
             c = similar(a)
             x = similar(a)
         elseif algo == "CR"
-            a = Matrix{Float64}(undef, dynamic_nbr, dynamic_nbr)
+            a = Matrix{Float64}(undef, n_dyn, n_dyn)
             b = similar(a)
             c = similar(a)
             x = similar(a)
-            solver_ws = CyclicReductionWs(dynamic_nbr)
+            solver_ws = CyclicReductionWs(n_dyn)
             d = Matrix{Float64}(undef, 0, 0)
             e = similar(d)
         end
-        ghx = Matrix{Float64}(undef, endogenous_nbr, backward_nbr)
-        gx = Matrix{Float64}(undef, forward_nbr, backward_nbr)
-        hx = Matrix{Float64}(undef,  backward_nbr, backward_nbr)
-        temp1 = Matrix{Float64}(undef, static_nbr, forward_nbr)
-        temp2 = Matrix{Float64}(undef, static_nbr, backward_nbr)
-        temp3 = Matrix{Float64}(undef, forward_nbr, backward_nbr)
-        temp4 = Matrix{Float64}(undef, endogenous_nbr - static_nbr, backward_nbr)
-        temp5 = Matrix{Float64}(undef, endogenous_nbr, exogenous_nbr)
-        temp6 = Matrix{Float64}(undef, static_nbr, backward_nbr)
-        temp7 = Matrix{Float64}(undef, endogenous_nbr, backward_nbr)
-        temp8 = Matrix{Float64}(undef, endogenous_nbr, forward_nbr)
-        temp9 = Matrix{Float64}(undef, endogenous_nbr, current_nbr)
-        b10 = Matrix{Float64}(undef, static_nbr,static_nbr)
-        b11 = Matrix{Float64}(undef, static_nbr, endogenous_nbr - static_nbr)
-        current_backward_indices = findall(in(backward_indices), current_indices)
-        current_forward_indices = findall(in(forward_indices), current_indices)
-        # derivatives of current values of variables that are both
-        # forward and backward are included in the D matrix
-        k1 = findall(in(current_indices), backward_indices)
-        icolsD = [k1;  backward_nbr .+ (1:forward_nbr)]
-        jcolsD = [backward_nbr .+ current_backward_indices;
-                  backward_nbr + current_nbr .+ (1:forward_nbr)]
-        k2a = findall(in(purely_forward_indices), forward_indices)
-        k2b = findall(in(purely_forward_indices), current_indices)
-        icolsE = [1:backward_nbr; backward_nbr .+ k2a]
-        jcolsE = [1:backward_nbr; backward_nbr .+ k2b]
-        colsUD = findall(in(forward_indices), backward_indices)
-        colsUE = backward_nbr .+ findall(in(backward_indices), forward_indices)
-        linsolve_static_ws = LUWs(static_nbr)
-        AGplusB = Matrix{Float64}(undef, endogenous_nbr, endogenous_nbr)
-        AGplusB_linsolve_ws = LUWs(endogenous_nbr)
+        ghx = Matrix{Float64}(undef, n_end, n_back)
+        gx = Matrix{Float64}(undef, n_forw, n_back)
+        hx = Matrix{Float64}(undef,  n_back, n_back)
+        temp1 = Matrix{Float64}(undef, n_stat, n_forw)
+        temp2 = Matrix{Float64}(undef, n_stat, n_back)
+        temp3 = Matrix{Float64}(undef, n_forw, n_back)
+        temp4 = Matrix{Float64}(undef, n_end - n_stat, n_back)
+        temp5 = Matrix{Float64}(undef, n_end, n_ex)
+        temp6 = Matrix{Float64}(undef, n_stat, n_back)
+        temp7 = Matrix{Float64}(undef, n_end, n_back)
+        temp8 = Matrix{Float64}(undef, n_end, n_forw)
+        temp9 = Matrix{Float64}(undef, n_end, n_curr)
+        b10 = Matrix{Float64}(undef, n_stat,n_stat)
+        b11 = Matrix{Float64}(undef, n_stat, n_end - n_stat)
+        linsolve_static_ws = LUWs(n_stat)
+        AGplusB = Matrix{Float64}(undef, n_end, n_end)
+        AGplusB_linsolve_ws = LUWs(n_end)
         #        if m.serially_correlated_exogenous
         #            eye_plus_at_kron_b_ws = EyePlusAtKronBWs(ma, mb, mc, 1)
         #        else
         #            eye_plus_at_kron_b_ws = EyePlusAtKronBWs(1, 1, 1, 1)
         # end
-        new(algo, endogenous_nbr, exogenous_nbr,
-            exogenous_deterministic_nbr, forward_indices,
-            purely_forward_indices, current_indices, backward_indices,
-            both_indices, static_indices, dynamic_indices,
-            non_backward_indices, current_dynamic_indices,
-            forward_indices_d, backward_indices_d,
-            current_dynamic_indices_d, current_dynamic_indices_d_j,
-            exogenous_indices, static_indices_j, static_nbr,
-            dynamic_nbr, forward_nbr, backward_nbr, both_nbr,
-            current_nbr, jacobian_static, qr_ws, solver_ws, a, b, c,
+
+        new(algo, indices, jacobian_static, qr_ws, solver_ws, a, b, c,
             d, e, x, ghx, gx, hx, temp1, temp2, temp3, temp4, temp5,
-            temp6, temp7, temp8, temp9, b10, b11, icolsD, icolsE,
-            jcolsD, jcolsE, colsUD, colsUE, AGplusB,
+            temp6, temp7, temp8, temp9, b10, b11, AGplusB,
             linsolve_static_ws, AGplusB_linsolve_ws)
     end
 end
@@ -192,21 +228,21 @@ mutable struct LinearRationalExpectationsResults
     endogenous_variance::Matrix{Float64}
     #    g1_3::SubArray # solution first order derivatives w.r. to lagged exogenous variables
     stationary_variables::Vector{Bool}
-    function LinearRationalExpectationsResults(endogenous_nbr::Int64,
+    function LinearRationalExpectationsResults(n_endogenous::Int64,
                                                exogenous_nbr::Int64,
                                                backward_nbr::Int64)
         state_nbr = backward_nbr + exogenous_nbr
-        non_backward_nbr = endogenous_nbr - backward_nbr
+        non_backward_nbr = n_endogenous - backward_nbr
         eigenvalues = Vector{Float64}(undef, 0)
-        g1 =  zeros(endogenous_nbr,(state_nbr + 1))
+        g1 =  zeros(n_endogenous,(state_nbr + 1))
         gs1 = zeros(backward_nbr,backward_nbr)
         hs1 = zeros(backward_nbr,exogenous_nbr)
         gns1 = zeros(non_backward_nbr,backward_nbr)
         hns1 = zeros(non_backward_nbr,exogenous_nbr)
         g1_1 = view(g1, :, 1:backward_nbr)
         g1_2 = view(g1, :, backward_nbr .+ (1:exogenous_nbr))
-        endogenous_variance = zeros(endogenous_nbr, endogenous_nbr)
-        stationary_variables = Vector{Bool}(undef, endogenous_nbr)
+        endogenous_variance = zeros(n_endogenous, n_endogenous)
+        stationary_variables = Vector{Bool}(undef, n_endogenous)
         new(eigenvalues, g1, gs1, hs1, gns1, hns1, g1_1, g1_2, endogenous_variance, stationary_variables)
 #        g1_3 = view(g[1], :, backward_nbr + exogenous_nbr .+ lagged_exogenous_nbr)
 #        new(g, gs, g1_1, g1_2, g1_3, AGplusB, AGplusB_linsolve_ws)
@@ -224,7 +260,7 @@ ws: FirstOrderWs workspace. On exit contains the triangular part conrresponding
 """
 function remove_static!(jacobian::Matrix{Float64},
                         ws::LinearRationalExpectationsWs)
-    ws.jacobian_static .= view(jacobian, :, ws.static_indices_j)
+    ws.jacobian_static .= view(jacobian, :, ws.indices.current_in_static_jacobian)
     geqrf!(ws.qr_ws, ws.jacobian_static)
     ormqr!(ws.qr_ws, 'L', 'T', ws.jacobian_static, jacobian)
 end
@@ -236,23 +272,24 @@ G_y,static = -B_s,s^{-1}(A_s*Gy,fwrd*Gs + B_s,d*Gy,dynamic + C_s)
 function add_static!(results::LinearRationalExpectationsResults,
                      jacobian::Matrix{Float64},
                      ws::LinearRationalExpectationsWs)
+    ids = ws.indices
     @views @inbounds begin
         # static rows are at the top of the QR transformed Jacobian matrix
         # B_s,s
         # fill!(ws.b10, 0.0)
-        stat_r = 1:ws.static_nbr
-        back_r = 1:ws.backward_nbr
+        stat_r = 1:n_static(ids)
+        back_r = 1:n_backward(ids)
         # B_s,d
-        ws.b10 .= jacobian[stat_r, ws.static_indices_j]
-        ws.b11[:, ws.current_dynamic_indices_d] .= jacobian[stat_r, ws.current_dynamic_indices_d_j]
+        ws.b10 .= jacobian[stat_r, ids.current_in_static_jacobian]
+        ws.b11[:, ids.current_in_dynamic] .= jacobian[stat_r, ids.current_in_dynamic_jacobian]
         # A_s
-        ws.temp1 .= jacobian[stat_r, ws.backward_nbr + ws.current_nbr .+ (1:ws.forward_nbr)]
+        ws.temp1 .= jacobian[stat_r, n_backward(ids) + n_current(ids) .+ (1:n_forward(ids))]
         # C_s
         ws.temp2 .= jacobian[stat_r, back_r]
         # Gy.fwrd
-        ws.temp3 .= results.g1_1[ws.forward_indices, back_r]
+        ws.temp3 .= results.g1_1[ids.forward, back_r]
         # Gy.dynamic
-        ws.temp4 .= results.g1_1[ws.dynamic_indices, back_r]
+        ws.temp4 .= results.g1_1[ids.dynamic, back_r]
         # ws.temp2 = B_s,d*Gy.dynamic + C_s
         mul!(ws.temp2, ws.b11, ws.temp4, 1.0, 1.0)
         # ws.temp6 = A_s*Gy.fwrd*gs1
@@ -263,7 +300,7 @@ function add_static!(results::LinearRationalExpectationsResults,
         lu_t = LU(factorize!(ws.linsolve_static_ws, ws.b10)...)
         ldiv!(lu_t, ws.temp2)
         
-        results.g1[ws.static_indices, back_r] .= ws.temp2
+        results.g1[ids.static, back_r] .= ws.temp2
     end
     return results.g1, jacobian
 end
@@ -274,11 +311,12 @@ function get_abc!(ws::LinearRationalExpectationsWs,
     fill!(ws.b, 0.0)
     fill!(ws.c, 0.0)
 
-    dyn_r = ws.static_nbr .+ (1:ws.dynamic_nbr)
+    ids   = ws.indices
+    dyn_r = n_static(ids) .+ (1:n_dynamic(ids))
     @views @inbounds begin
-        ws.a[:, ws.forward_indices_d]         .= jacobian[dyn_r, ws.backward_nbr + ws.current_nbr .+ (1:ws.forward_nbr)]
-        ws.b[:, ws.current_dynamic_indices_d] .= jacobian[dyn_r, ws.current_dynamic_indices_d_j]
-        ws.c[:, ws.backward_indices_d]        .= jacobian[dyn_r, 1:ws.backward_nbr]
+        ws.a[:, ids.forward_in_dynamic]  .= jacobian[dyn_r, n_backward(ids) + n_current(ids) .+ (1:n_forward(ids))]
+        ws.b[:, ids.current_in_dynamic]  .= jacobian[dyn_r, ids.current_in_dynamic_jacobian]
+        ws.c[:, ids.backward_in_dynamic] .= jacobian[dyn_r, 1:n_backward(ids)]
     end
     return ws.a, ws.b, ws.c
 end
@@ -287,16 +325,19 @@ function get_de!(ws::LinearRationalExpectationsWs,
                  jacobian::AbstractMatrix{Float64})
     fill!(ws.d, 0.0)
     fill!(ws.e, 0.0)
-    r = ws.static_nbr .+ (1:ws.dynamic_nbr)
-    dyn_r  = 1:ws.dynamic_nbr
-    both_r = 1:ws.both_nbr
+    
+    ids    = ws.indices
+    n_dyn  = n_dynamic(ids)
+    dyn_r  = 1:n_dyn
+    r      = n_static(ids) .+ dyn_r
+    both_r = 1:n_both(ids)
     @views @inbounds begin
-        ws.d[dyn_r, ws.icolsD] .=  jacobian[r, ws.jcolsD]
-        ws.e[dyn_r, ws.icolsE] .=  .- jacobian[r, ws.jcolsE]
+        ws.d[dyn_r, ids.D_columns.D] .=     jacobian[r, ids.D_columns.jacobian]
+        ws.e[dyn_r, ids.E_columns.E] .=  .- jacobian[r, ids.E_columns.jacobian]
         for i = both_r 
-            k = ws.dynamic_nbr + i
-            ws.d[k, ws.colsUD[i]] = 1.0
-            ws.e[k, ws.colsUE[i]] = 1.0
+            k = n_dyn + i
+            ws.d[k, ids.UD_columns[i]] = 1.0
+            ws.e[k, ids.UE_columns[i]] = 1.0
         end
     end
     return ws.d, ws.e
@@ -308,11 +349,12 @@ function make_AGplusB!(AGplusB::AbstractMatrix{Float64},
                           B::AbstractMatrix{Float64},
                           ws::LinearRationalExpectationsWs)
     fill!(AGplusB, 0.0)
+    ids = ws.indices
     @views @inbounds begin
-        AGplusB[:, ws.current_indices] .= B
-        ws.temp3 .= G[ws.forward_indices, :]
+        AGplusB[:, ids.current] .= B
+        ws.temp3 .= G[ids.forward, :]
         mul!(ws.temp7, A, ws.temp3)
-        AGplusB[:, ws.backward_indices] .+= ws.temp7
+        AGplusB[:, ids.backward] .+= ws.temp7
         return AGplusB
     end
     
@@ -332,8 +374,8 @@ function solve_for_derivatives_with_respect_to_shocks!(results::LinearRationalEx
         linsolve_core_no_lu!(results.f1g1plusf2, results.g1_3, ws)
     end
     =#
-    if ws.exogenous_nbr > 0
-        results.g1_2 .= .-view(jacobian, :, ws.exogenous_indices)
+    if n_exogenous(ws.indices) > 0
+        results.g1_2 .= .-view(jacobian, :, ws.indices.exogenous)
         
 #        if ws.serially_correlated_exogenous
             # TO BE DONE
@@ -349,23 +391,34 @@ function first_order_solver!(results::LinearRationalExpectationsResults,
                              jacobian::AbstractMatrix{Float64},
                              options::LinearRationalExpectationsOptions,
                              ws::LinearRationalExpectationsWs)
+                             
     remove_static!(jacobian, ws)
-    back_r     = 1:ws.backward_nbr
-    back_ids   = ws.backward_indices
-    back_ids_d = ws.backward_indices_d
-    dyn_ids    = ws.dynamic_indices
-    pur_for_ids = ws.purely_forward_indices
+    ids = ws.indices
+    
+    n_back    = n_backward(ids)
+    n_cur     = n_current(ids)
+    back_r    = 1:n_back
+    forward_r = 1:n_forward(ids)
+    current_r = 1:n_cur
+    back      = ids.backward
+    back_d    = ids.backward_in_dynamic
+    dyn       = ids.dynamic
+    pur_for   = ids.purely_forward
+    
     @views @inbounds begin
         if algo == "CR"
             ws.a, ws.b, ws.c = get_abc!(ws, jacobian)
+            
             cyclic_reduction!(ws.x, ws.c, ws.b, ws.a, ws.solver_ws,
                               options.cyclic_reduction.tol, options.cyclic_reduction.maxiter)
-            results.gs1[:, back_r] .= ws.x[back_ids_d, back_ids_d]
-            results.g1[dyn_ids, back_r] .= ws.x[:, back_ids_d]
+                              
+            results.gs1[:, back_r]  .= ws.x[back_d, back_d]
+            results.g1[dyn, back_r] .= ws.x[:, back_d]
+            
         elseif algo == "GS"
             ws.d, ws.e = get_de!(ws, jacobian)
             try
-                gs_solver!(ws.solver_ws, ws.d, ws.e, ws.backward_nbr,
+                gs_solver!(ws.solver_ws, ws.d, ws.e, n_backward(ws.indices),
                            options.generalized_schur.criterium)
             catch e
                 resize!(results.eigenvalues, length(ws.solver_ws.schurws.eigen_values))
@@ -373,27 +426,30 @@ function first_order_solver!(results::LinearRationalExpectationsResults,
                 rethrow(e)
             end
 
-            results.gs1 .= ws.solver_ws.g1
-            results.g1[back_ids, back_r] .= ws.solver_ws.g1[back_r, back_r]
-            results.g1[pur_for_ids, back_r] .= ws.solver_ws.g2[ws.icolsE[ws.backward_nbr .+ (1:(ws.forward_nbr - ws.both_nbr))] .- ws.backward_nbr, :]
+            results.gs1                 .= ws.solver_ws.g1
+            results.g1[back, back_r]    .= ws.solver_ws.g1[back_r, back_r]
+            results.g1[pur_for, back_r] .= ws.solver_ws.g2[ids.E_columns.E[n_backward(ids) .+ (1:(n_forward(ids) - n_both(ids)))] .- n_backward(ids), :]
+            
             resize!(results.eigenvalues, length(ws.solver_ws.schurws.eigen_values))
             results.eigenvalues .= ws.solver_ws.schurws.eigen_values
         else
             error("Algorithm $algo not recognized")
         end
-        if ws.static_nbr > 0
+        if n_static(ids) > 0
             results.g1, jacobian = add_static!(results, jacobian, ws)
         end
-        #    A = view(jacobian, :, ws.backward_nbr + ws.current_nbr .+ (1:ws.forward_nbr))
-        #    B = view(jacobian, :, ws.backward_nbr .+ ws.current_indices)
-        ws.temp8[:, 1:ws.forward_nbr] .= jacobian[:, ws.backward_nbr + ws.current_nbr .+ (1:ws.forward_nbr)]
-        ws.temp9[:, 1:ws.current_nbr] .= jacobian[:, ws.backward_nbr .+ (1:ws.current_nbr)]
+        #    A = view(jacobian, :, n_backward(ws.indices) + ws.current_nbr .+ (1:ws.forward_nbr))
+        #    B = view(jacobian, :, n_backward(ws.indices) .+ ws.indices.current)
+        ws.temp8[:, forward_r] .= jacobian[:, n_back + n_cur .+ forward_r]
+        ws.temp9[:, current_r] .= jacobian[:, n_back .+ current_r]
+        
         ws.AGplusB = make_AGplusB!(ws.AGplusB, ws.temp8, results.g1_1, ws.temp9, ws)        
         solve_for_derivatives_with_respect_to_shocks!(results, jacobian, ws)
-        results.hs1 .= results.g1_2[back_ids, :]
-        results.gns1 .= results.g1_1[ws.non_backward_indices, :]
-        results.hns1 .= results.g1_2[ws.non_backward_indices, :]
+        results.hs1  .= results.g1_2[back, :]
+        results.gns1 .= results.g1_1[ids.non_backward, :]
+        results.hns1 .= results.g1_2[ids.non_backward, :]
     end
 end
+
 
 
