@@ -10,9 +10,9 @@ struct NonstationaryVarianceWs
     rΣ_ns_ns::Matrix{Float64}
     state_stationary_variables::Vector{Bool}
     nonstate_stationary_variables::Vector{Bool}
-    function NonstationaryVarianceWs(endogenous_nbr::Int64,
-                                        exogenous_nbr::Int64,
-                                        state_nbr::Int64,
+    function NonstationaryVarianceWs(endogenous_nbr::Int,
+                                        exogenous_nbr::Int,
+                                        state_nbr::Int,
                                         nonstationary_variables::Vector{Bool},
                                         A2::Matrix{Float64})
         nonstate_nbr = endogenous_nbr - state_nbr
@@ -58,8 +58,8 @@ struct VarianceWs
     nonstationary_ws::Vector{NonstationaryVarianceWs}
     lre_ws::LinearRationalExpectationsWs
     lyapd_ws::LyapdWs
-    function VarianceWs(var_nbr::Int64, state_nbr::Int64,
-                           shock_nbr::Int64, lre_ws::LinearRationalExpectationsWs)
+    function VarianceWs(var_nbr::Int, state_nbr::Int,
+                           shock_nbr::Int, lre_ws::LinearRationalExpectationsWs)
         nonstate_nbr = var_nbr - state_nbr
         B1S = Matrix{Float64}(undef, state_nbr, shock_nbr)
         B1SB1 = Matrix{Float64}(undef, state_nbr, state_nbr)
@@ -318,7 +318,7 @@ function correlation(v::AbstractMatrix{T}) where T
 end
 
 """
-autocovariance!(av::Vector{<:AbstractMatrix{T}}, a::AbstractMatrix{T}, v::AbstractMatrix{T}, work1::AbstractMatrix{T}, work2::AbstractMatrix{T},order::Int64)
+autocovariance!(av::Vector{<:AbstractMatrix{T}}, a::AbstractMatrix{T}, v::AbstractMatrix{T}, work1::AbstractMatrix{T}, work2::AbstractMatrix{T},order::Int)
 
 returns a vector of autocovariance matrices E(y_t y_{t-i}') i = 1,...,i for an vector autoregressive process y_t = Ay_{t-1} + Be_t
 """
@@ -327,7 +327,7 @@ function autocovariance!(av::Vector{<:AbstractMatrix{T}},
                          S1a::AbstractMatrix{T},
                          S1b::AbstractMatrix{T},
                          S2::AbstractMatrix{T},
-                         backward_indices::Vector{Int64},
+                         backward_indices::Vector{Int},
                          stationary_variables::Vector{Bool}) where T <: Real
     S1a .= view(lre_results.endogenous_variance, backward_indices, :)
     n = size(av[1], 1)
@@ -355,7 +355,7 @@ function autocovariance!(av::Vector{<:AbstractMatrix{T}},
 end
     
 """
-autocovariance!(av::Vector{<:AbstractVector{T}}, a::AbstractMatrix{T}, v::AbstractMatrix{T}, work1::AbstractMatrix{T}, work2::AbstractMatrix{T},order::Int64)
+autocovariance!(av::Vector{<:AbstractVector{T}}, a::AbstractMatrix{T}, v::AbstractMatrix{T}, work1::AbstractMatrix{T}, work2::AbstractMatrix{T},order::Int)
 
 returns a vector of autocovariance vector with elements E(y_{j,t} y_{j,t-i}') j= 1,...,n and i = 1,...,i for an vector autoregressive process y_t = Ay_{t-1} + Be_t
 """
@@ -364,7 +364,7 @@ function autocovariance!(av::Vector{<:AbstractVector{T}},
                          S1a::AbstractMatrix{T},
                          S1b::AbstractMatrix{T},
                          S2::AbstractMatrix{T},
-                         backward_indices::Vector{Int64},
+                         backward_indices::Vector{Int},
                          stationary_variables::Vector{Bool}) where T <: Real
     backward_stationary_indices = [i for i in backward_indices if stationary_variables[i]]
     variance = lre_results.endogenous_variance
@@ -397,7 +397,7 @@ function autocorrelation!(ar::Vector{<:AbstractVecOrMat{T}},
                           S1a::AbstractMatrix{T},
                           S1b::AbstractMatrix{T},
                           S2::AbstractMatrix{T},
-                          backward_indices::Vector{Int64},
+                          backward_indices::Vector{Int},
                           stationary_variables::Vector{Bool}
                           ) where T <: Real
     autocovariance!(ar, lre_results, S1a, S1b, S2, backward_indices, stationary_variables)
@@ -499,9 +499,9 @@ end
 function variance_decomposition(LREresults::LinearRationalExpectationsResults,
                                 LREws::LinearRationalExpectationsWs,
                                 Σe::Matrix{Float64},
-                                endogenous_nbr::Int64,
-                                exogenous_nbr::Int64,
-                                state_nbr::Int64)
+                                endogenous_nbr::Int,
+                                exogenous_nbr::Int,
+                                state_nbr::Int)
     VD = Matrix{Float64}(undef, endogenous_nbr, exogenous_nbr)
     work1 = Matrix{Float64}(undef, exogenous_nbr, exogenous_nbr)
     work2 = Matrix{Float64}(undef, endogenous_nbr, endogenous_nbr)

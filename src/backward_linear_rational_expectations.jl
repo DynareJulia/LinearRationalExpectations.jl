@@ -7,29 +7,29 @@ using LinearAlgebra.BLAS
 
 struct BackwardLinearRationalExpectationsWs
     algo::String
-    endogenous_nbr::Int64
-    exogenous_nbr::Int64
-    exogenous_deterministic_nbr::Int64
-    forward_indices::Vector{Int64}
-    purely_forward_indices::Vector{Int64}
-    current_indices::Vector{Int64}
-    backward_indices::Vector{Int64}
-    both_indices::Vector{Int64}
-    static_indices::Vector{Int64}
-    dynamic_indices::Vector{Int64}
-    current_dynamic_indices::Vector{Int64}
-    forward_indices_d::Vector{Int64}
-    backward_indices_d::Vector{Int64}
-    current_dynamic_indices_d::Vector{Int64}
-    current_dynamic_indices_d_j::Vector{Int64}
-    exogenous_indices::Vector{Int64}
-    static_indices_j::Vector{Int64}
-    static_nbr::Int64
-    dynamic_nbr::Int64
-    forward_nbr::Int64
-    backward_nbr::Int64
-    both_nbr::Int64
-    current_nbr::Int64
+    endogenous_nbr::Int
+    exogenous_nbr::Int
+    exogenous_deterministic_nbr::Int
+    forward_indices::Vector{Int}
+    purely_forward_indices::Vector{Int}
+    current_indices::Vector{Int}
+    backward_indices::Vector{Int}
+    both_indices::Vector{Int}
+    static_indices::Vector{Int}
+    dynamic_indices::Vector{Int}
+    current_dynamic_indices::Vector{Int}
+    forward_indices_d::Vector{Int}
+    backward_indices_d::Vector{Int}
+    current_dynamic_indices_d::Vector{Int}
+    current_dynamic_indices_d_j::Vector{Int}
+    exogenous_indices::Vector{Int}
+    static_indices_j::Vector{Int}
+    static_nbr::Int
+    dynamic_nbr::Int
+    forward_nbr::Int
+    backward_nbr::Int
+    both_nbr::Int
+    current_nbr::Int
     jacobian_static::Matrix{Float64} 
     qr_ws::QRWs
     solver_ws::Union{GsSolverWs, CyclicReductionWs}
@@ -53,26 +53,26 @@ struct BackwardLinearRationalExpectationsWs
     temp9::Matrix{Float64}
     b10::Matrix{Float64}
     b11::Matrix{Float64}
-    icolsD::Vector{Int64}
-    icolsE::Vector{Int64}
-    jcolsD::Vector{Int64}
-    jcolsE::Vector{Int64}
-    colsUD::Vector{Int64}
-    colsUE::Vector{Int64}
+    icolsD::Vector{Int}
+    icolsE::Vector{Int}
+    jcolsD::Vector{Int}
+    jcolsE::Vector{Int}
+    colsUD::Vector{Int}
+    colsUE::Vector{Int}
     AGplusB::Matrix{Float64}
     linsolve_static_ws::LUWs
     AGplusB_linsolve_ws::LUWs
     #    eye_plus_at_kron_b_ws::EyePlusAtKronBWs
     
     function BackwardLinearRationalExpectationsWs(algo::String,
-                                          endogenous_nbr::Int64,
-                                          exogenous_nbr::Int64,
-                                          exogenous_deterministic_nbr::Int64,
-                                          forward_indices::Vector{Int64},
-                                          current_indices::Vector{Int64},
-                                          backward_indices::Vector{Int64},
-                                          both_indices::Vector{Int64},
-                                          static_indices::Vector{Int64})
+                                          endogenous_nbr::Int,
+                                          exogenous_nbr::Int,
+                                          exogenous_deterministic_nbr::Int,
+                                          forward_indices::Vector{Int},
+                                          current_indices::Vector{Int},
+                                          backward_indices::Vector{Int},
+                                          both_indices::Vector{Int},
+                                          static_indices::Vector{Int})
         static_nbr = length(static_indices)
         forward_nbr = length(forward_indices)
         backward_nbr = length(backward_indices)
@@ -171,9 +171,9 @@ struct BackwardLinearRationalExpectationsResults
      g1_2::SubArray # solution first order derivatives w.r. to current exogenous variables
 #    g1_3::SubArray # solution first order derivatives w.r. to lagged exogenous variables
     
-    function BackwardLinearRationalExpectationsResults(endogenous_nbr::Int64,
-                                               exogenous_nbr::Int64,
-                                               backward_nbr::Int64)
+    function BackwardLinearRationalExpectationsResults(endogenous_nbr::Int,
+                                               exogenous_nbr::Int,
+                                               backward_nbr::Int)
         nstate = backward_nbr + exogenous_nbr 
         g1 =  zeros(endogenous_nbr,(nstate + 1))
         gs1 = zeros(backward_nbr,backward_nbr)
