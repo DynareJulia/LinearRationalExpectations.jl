@@ -69,8 +69,6 @@ struct VarianceWs
         Σ_ns_s = Matrix{Float64}(undef, nonstate_nbr, state_nbr)
         Σ_ns_ns = Matrix{Float64}(undef, nonstate_nbr, nonstate_nbr)
         stationary_variables = Vector{Bool}(undef, var_nbr)
-        state_stationary_variables = Vector{Bool}(undef, 0)
-        nonstate_stationary_variables = Vector{Bool}(undef, 0)
         nonstationary_ws = Vector{NonstationaryVarianceWs}(undef, 0)
         lyapd_ws = LyapdWs(state_nbr)
         new(B1S, B1SB1, A2S, B2S, Σ_s_s, Σ_ns_s, Σ_ns_ns,
@@ -486,9 +484,6 @@ function variance_decomposition!(
                           work1,
                           lre_variance_ws,
                           )
-        k = [3, 4, 6]
-        A = LRE_results.g1_1
-        B = LRE_results.g1_2
         for j = 1:size(VD, 1)
             VD[j, i] = work2[j, j]/variance[j]
         end

@@ -200,7 +200,7 @@ mutable struct LinearRationalExpectationsWs
 end
 
 Base.@kwdef struct CyclicReductionOptions
-    maxiter::Int64 = 100
+    maxiter::Int = 100
     tol::Float64   = 1e-8
 end
 
@@ -222,15 +222,15 @@ mutable struct LinearRationalExpectationsResults
     gns1::Matrix{Float64} # non states x states
     hns1::Matrix{Float64} # non states x shocsks
     # solution first order derivatives w.r. to state variables
-    g1_1::SubArray{Float64, 2, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}}, true}
+    g1_1::SubArray{Float64, 2, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int}}, UnitRange{Int}}, true}
     # solution first order derivatives w.r. to current exogenous variables
-    g1_2::SubArray{Float64, 2, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int64}}, UnitRange{Int64}}, true}
+    g1_2::SubArray{Float64, 2, Matrix{Float64}, Tuple{Base.Slice{Base.OneTo{Int}}, UnitRange{Int}}, true}
     endogenous_variance::Matrix{Float64}
     #    g1_3::SubArray # solution first order derivatives w.r. to lagged exogenous variables
     stationary_variables::Vector{Bool}
-    function LinearRationalExpectationsResults(n_endogenous::Int64,
-                                               exogenous_nbr::Int64,
-                                               backward_nbr::Int64)
+    function LinearRationalExpectationsResults(n_endogenous::Int,
+                                               exogenous_nbr::Int,
+                                               backward_nbr::Int)
         state_nbr = backward_nbr + exogenous_nbr
         non_backward_nbr = n_endogenous - backward_nbr
         eigenvalues = Vector{Float64}(undef, 0)

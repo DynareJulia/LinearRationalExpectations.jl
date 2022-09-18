@@ -4,7 +4,7 @@ exogenous_nbr = 3
 forward_indices = collect(1:2)
 current_indices = collect(1:6)
 backward_indices = collect(4:6)
-both_indices = Vector{Int64}(undef, 0)
+both_indices = Vector{Int}(undef, 0)
 static_indices = [3]
 
 lre_ws = LinearRationalExpectationsWs(algo,
@@ -56,7 +56,7 @@ exogenous_nbr = 3
 forward_indices = collect(1:2)
 current_indices = collect(1:8)
 backward_indices = collect(4:8)
-both_indices = Vector{Int64}(undef, 0)
+both_indices = Vector{Int}(undef, 0)
 static_indices = [3]
 
 lre_ws = LinearRationalExpectationsWs(algo,

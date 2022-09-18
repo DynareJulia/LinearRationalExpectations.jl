@@ -1,5 +1,5 @@
-function fan_columns!(y::Matrix{Float64}, x::Matrix{Float64}, columns::Vector{Int64},
-                      offset_x::Int64)
+function fan_columns!(y::Matrix{Float64}, x::Matrix{Float64}, columns::Vector{Int},
+                      offset_x::Int)
     my, ny = size(y)
     mx, nx = size(x)
     source = offset_x*mx + 1
@@ -61,14 +61,14 @@ end
 """
 function hh!(hh::AbstractMatrix{Float64}, h::AbstractMatrix{Float64}, 
              f::AbstractMatrix{Float64}, hf::AbstractMatrix{Float64},
-             n::Int64, work1::AbstractMatrix{Float64},
+             n::Int, work1::AbstractMatrix{Float64},
              work2::AbstractMatrix{Float64})
 
 computes hh = [h, h(1), h(2), ..., h(n-1)] and h(i) = -h*f*h(-1)
 """
 function hh!(hh::AbstractMatrix{Float64}, h::AbstractMatrix{Float64},
              f::AbstractMatrix{Float64}, hf::AbstractMatrix{Float64},
-             preconditioner_window::Int64, work1::AbstractMatrix{Float64},
+             preconditioner_window::Int, work1::AbstractMatrix{Float64},
              work2::AbstractMatrix{Float64})
     if any(isnan.(h))
         throw(ArgumentError("NaN in h"))
