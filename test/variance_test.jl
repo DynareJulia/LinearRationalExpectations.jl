@@ -30,10 +30,10 @@ function test_variance_matrices()
         nonstationary = any(abs.(eigen(A[backward_indices, backward_indices]).values) .> 1.0)
     end
     A1 = A[backward_indices, backward_indices]
-    A2 = A[lre_ws.indices.non_backward, lre_ws.indices.backward]
+    A2 = A[lre_ws.ids.non_backward, lre_ws.ids.backward]
     B = rand(endogenous_nbr, exogenous_nbr)
     B1 = B[backward_indices, :]
-    B2 = B[lre_ws.indices.non_backward, :]
+    B2 = B[lre_ws.ids.non_backward, :]
     Σe = randn(exogenous_nbr, exogenous_nbr)
     Σe = transpose(Σe)*Σe
     Σy = zeros(endogenous_nbr, endogenous_nbr)
@@ -92,11 +92,11 @@ function test_variance_lre()
     end
 
     A1 = A[backward_indices, backward_indices]
-    A2 = A[lre_ws.indices.non_backward, backward_indices]
+    A2 = A[lre_ws.ids.non_backward, backward_indices]
     B = rand(endogenous_nbr, exogenous_nbr)
 
     B1 = B[backward_indices, :]
-    B2 = B[lre_ws.indices.non_backward, :]
+    B2 = B[lre_ws.ids.non_backward, :]
 
     Σe = randn(exogenous_nbr, exogenous_nbr)
     Σe = transpose(Σe)*Σe

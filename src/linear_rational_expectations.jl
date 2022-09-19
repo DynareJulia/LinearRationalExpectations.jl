@@ -107,30 +107,131 @@ n_dynamic(i::Indices)    = length(i.dynamic)
 n_endogenous(i::Indices) = i.n_endogenous
 n_exogenous(i::Indices) = length(i.exogenous)
 
-mutable struct LinearRationalExpectationsWs
-    algo::String
-    indices::Indices
-    jacobian_static::Matrix{Float64} 
-    qr_ws::QRWs
-    solver_ws::Union{GsSolverWs, CyclicReductionWs}
+mutable struct LinearGsSolverWs
+    solver_ws::GsSolverWs
+    ids::Indices
+    d::Matrix{Float64}
+    e::Matrix{Float64}
+end
+function LinearGsSolverWs(ids::Indices)
+    n_back = n_backward(ids)
+    de_order = n_forward(ids) + n_back
+    d = zeros(de_order, de_order)
+    e = similar(d)
+    solver_ws = GsSolverWs(d, n_back)
+    return LinearGsSolverWs(solver_ws, ids, d, e)
+end
+
+function copy_jacobian!(ws::LinearGsSolverWs,
+                        jacobian::AbstractMatrix{Float64})
+    fill!(ws.d, 0.0)
+    fill!(ws.e, 0.0)
+
+    ids = ws.ids
+    
+    n_dyn  = n_dynamic(ids)
+    dyn_r  = 1:n_dyn
+    r      = n_static(ids) .+ dyn_r
+    both_r = 1:n_both(ids)
+    @views @inbounds begin
+        ws.d[dyn_r, ids.D_columns.D] .=     jacobian[r, ids.D_columns.jacobian]
+        ws.e[dyn_r, ids.E_columns.E] .=  .- jacobian[r, ids.E_columns.jacobian]
+        for i = both_r 
+            k = n_dyn + i
+            ws.d[k, ids.UD_columns[i]] = 1.0
+            ws.e[k, ids.UE_columns[i]] = 1.0
+        end
+    end
+    return ws.d, ws.e
+end
+
+solve!(ws::LinearGsSolverWs, crit) = gs_solver!(ws.solver_ws, ws.d, ws.e, n_backward(ws.ids), crit)
+
+function solve_g1!(results, ws::LinearGsSolverWs, options)
+    ids = ws.ids
+    back    = ids.backward
+    n_back  = n_backward(ids)
+    back_r  = 1:n_back
+    pur_for = ids.purely_forward
+    try
+        solve!(ws, options.generalized_schur.criterium)
+    catch e
+        resize!(results.eigenvalues, length(ws.solver_ws.schurws.eigen_values))
+        copy!(results.eigenvalues, ws.solver_ws.eigen_values)
+        rethrow(e)
+    end
+
+    results.gs1                 .= ws.solver_ws.g1
+    results.g1[back, back_r]    .= ws.solver_ws.g1[back_r, back_r]
+    results.g1[pur_for, back_r] .= ws.solver_ws.g2[ids.E_columns.E[n_back .+ (1:(n_forward(ids) - n_both(ids)))] .- n_back, :]
+
+    resize!(results.eigenvalues, length(ws.solver_ws.schurws.eigen_values))
+    results.eigenvalues .= ws.solver_ws.schurws.eigen_values
+    return results.g1, results.gs1
+end
+
+mutable struct LinearCyclicReductionWs
+    solver_ws::CyclicReductionWs
+    ids::Indices
     a::Matrix{Float64}
     b::Matrix{Float64}
     c::Matrix{Float64}
-    d::Matrix{Float64}
-    e::Matrix{Float64}
     x::Matrix{Float64}
-    ghx::Matrix{Float64}
-    gx::Matrix{Float64}
-    hx::Matrix{Float64}
-    temp1::Matrix{Float64}
-    temp2::Matrix{Float64}
-    temp3::Matrix{Float64}
-    temp4::Matrix{Float64}
-    temp5::Matrix{Float64}
-    temp6::Matrix{Float64}
-    temp7::Matrix{Float64}
-    temp8::Matrix{Float64}
-    temp9::Matrix{Float64}
+end
+function LinearCyclicReductionWs(ids::Indices)
+    n_dyn  = n_dynamic(ids)
+    a = Matrix{Float64}(undef, n_dyn, n_dyn)
+    b = similar(a)
+    c = similar(a)
+    x = similar(a)
+    solver_ws = CyclicReductionWs(n_dyn)
+    return LinearCyclicReductionWs(solver_ws, ids, a, b, c, x)
+end
+
+function copy_jacobian!(ws::LinearCyclicReductionWs,
+                        jacobian::AbstractMatrix{Float64})
+    fill!(ws.a, 0.0)
+    fill!(ws.b, 0.0)
+    fill!(ws.c, 0.0)
+    ids = ws.ids
+    dyn_r = n_static(ids) .+ (1:n_dynamic(ids))
+    @views @inbounds begin
+        ws.a[:, ids.forward_in_dynamic]  .= jacobian[dyn_r, n_backward(ids) + n_current(ids) .+ (1:n_forward(ids))]
+        ws.b[:, ids.current_in_dynamic]  .= jacobian[dyn_r, ids.current_in_dynamic_jacobian]
+        ws.c[:, ids.backward_in_dynamic] .= jacobian[dyn_r, 1:n_backward(ids)]
+    end
+    return ws.a, ws.b, ws.c
+end
+
+solve!(ws::LinearCyclicReductionWs, tol, maxiter) = cyclic_reduction!(ws.x, ws.c, ws.b, ws.a, ws.solver_ws, tol, maxiter)
+
+function solve_g1!(results, ws::LinearCyclicReductionWs, options)
+    ids = ws.ids
+    back_r = 1:n_backward(ids)
+    dyn = ids.dynamic
+    back_d  = ids.backward_in_dynamic
+    solve!(ws, options.cyclic_reduction.tol, options.cyclic_reduction.maxiter)
+                      
+    results.gs1[:, back_r]  .= ws.x[back_d, back_d]
+    results.g1[dyn, back_r] .= ws.x[:, back_d]
+    return results.gs1, results.g1
+end
+
+mutable struct LinearRationalExpectationsWs
+    algo::String
+    ids::Indices
+    jacobian_static::Matrix{Float64} 
+    qr_ws::QRWs
+   
+    solver_ws::Union{LinearGsSolverWs, LinearCyclicReductionWs}
+    A_s::Matrix{Float64}
+    C_s::Matrix{Float64}
+    Gy_forward::Matrix{Float64}
+    Gy_dynamic::Matrix{Float64}
+    temp::Matrix{Float64}
+    AGplusB_backward::Matrix{Float64}
+    jacobian_forward::Matrix{Float64}
+    jacobian_current::Matrix{Float64}
     b10::Matrix{Float64}
     b11::Matrix{Float64}
     AGplusB::Matrix{Float64}
@@ -139,48 +240,30 @@ mutable struct LinearRationalExpectationsWs
     #    eye_plus_at_kron_b_ws::EyePlusAtKronBWs
     
     function LinearRationalExpectationsWs(algo::String, args...)
-        indices = Indices(args...)
-        n_back = n_backward(indices)
-        n_stat = n_static(indices)
-        n_forw = n_forward(indices)
-        n_dyn  = n_dynamic(indices)
-        n_ex   = n_exogenous(indices)
-        n_end  = n_endogenous(indices)
-        n_curr = n_current(indices)
+        ids = Indices(args...)
+        n_back = n_backward(ids)
+        n_stat = n_static(ids)
+        n_forw = n_forward(ids)
+        n_end  = n_endogenous(ids)
+        n_curr = n_current(ids)
         
-        jacobian_static = Matrix{Float64}(undef, n_endogenous(indices), n_static(indices))
+        jacobian_static = Matrix{Float64}(undef, n_endogenous(ids), n_static(ids))
          
         qr_ws = QRWs(jacobian_static)
-        if algo == "GS"
-            de_order = n_forward(indices) + n_back
-            d = zeros(de_order, de_order)
-            e = similar(d)
-            solver_ws = GsSolverWs(d, n_back)
-            a = Matrix{Float64}(undef, 0, 0)
-            b = similar(a)
-            c = similar(a)
-            x = similar(a)
-        elseif algo == "CR"
-            a = Matrix{Float64}(undef, n_dyn, n_dyn)
-            b = similar(a)
-            c = similar(a)
-            x = similar(a)
-            solver_ws = CyclicReductionWs(n_dyn)
-            d = Matrix{Float64}(undef, 0, 0)
-            e = similar(d)
-        end
-        ghx = Matrix{Float64}(undef, n_end, n_back)
-        gx = Matrix{Float64}(undef, n_forw, n_back)
-        hx = Matrix{Float64}(undef,  n_back, n_back)
-        temp1 = Matrix{Float64}(undef, n_stat, n_forw)
-        temp2 = Matrix{Float64}(undef, n_stat, n_back)
-        temp3 = Matrix{Float64}(undef, n_forw, n_back)
-        temp4 = Matrix{Float64}(undef, n_end - n_stat, n_back)
-        temp5 = Matrix{Float64}(undef, n_end, n_ex)
-        temp6 = Matrix{Float64}(undef, n_stat, n_back)
-        temp7 = Matrix{Float64}(undef, n_end, n_back)
-        temp8 = Matrix{Float64}(undef, n_end, n_forw)
-        temp9 = Matrix{Float64}(undef, n_end, n_curr)
+        solver_ws = algo == "GS" ? LinearGsSolverWs(ids) : LinearCyclicReductionWs(ids)
+        
+        A_s = Matrix{Float64}(undef, n_stat, n_forw)
+        C_s = Matrix{Float64}(undef, n_stat, n_back)
+        Gy_forward = Matrix{Float64}(undef, n_forw, n_back)
+        
+        Gy_dynamic = Matrix{Float64}(undef, n_end - n_stat, n_back)
+        temp = Matrix{Float64}(undef, n_stat, n_back)
+
+        AGplusB_backward = Matrix{Float64}(undef, n_end, n_back)
+
+        jacobian_forward = Matrix{Float64}(undef, n_end, n_forw)
+        jacobian_current = Matrix{Float64}(undef, n_end, n_curr)
+
         b10 = Matrix{Float64}(undef, n_stat,n_stat)
         b11 = Matrix{Float64}(undef, n_stat, n_end - n_stat)
         linsolve_static_ws = LUWs(n_stat)
@@ -192,9 +275,8 @@ mutable struct LinearRationalExpectationsWs
         #            eye_plus_at_kron_b_ws = EyePlusAtKronBWs(1, 1, 1, 1)
         # end
 
-        new(algo, indices, jacobian_static, qr_ws, solver_ws, a, b, c,
-            d, e, x, ghx, gx, hx, temp1, temp2, temp3, temp4, temp5,
-            temp6, temp7, temp8, temp9, b10, b11, AGplusB,
+        new(algo, ids, jacobian_static, qr_ws, solver_ws, A_s, C_s, Gy_forward, Gy_dynamic, 
+            temp, AGplusB_backward, jacobian_forward, jacobian_current, b10, b11, AGplusB,
             linsolve_static_ws, AGplusB_linsolve_ws)
     end
 end
@@ -254,13 +336,13 @@ remove_static! removes a subset of variables (columns) and rows by QR decomposit
 jacobian: on entry jacobian matrix of the original model
           on exit transformed jacobian. The rows corresponding to the dynamic part 
                   are at the bottom
-p_static: a vector of indices of static variables in jacobian matrix
+p_static: a vector of ids of static variables in jacobian matrix
 ws: FirstOrderWs workspace. On exit contains the triangular part conrresponding
                                     to static variables in jacobian_static
 """
 function remove_static!(jacobian::Matrix{Float64},
                         ws::LinearRationalExpectationsWs)
-    ws.jacobian_static .= view(jacobian, :, ws.indices.current_in_static_jacobian)
+    ws.jacobian_static .= view(jacobian, :, ws.ids.current_in_static_jacobian)
     geqrf!(ws.qr_ws, ws.jacobian_static)
     ormqr!(ws.qr_ws, 'L', 'T', ws.jacobian_static, jacobian)
 end
@@ -272,75 +354,38 @@ G_y,static = -B_s,s^{-1}(A_s*Gy,fwrd*Gs + B_s,d*Gy,dynamic + C_s)
 function add_static!(results::LinearRationalExpectationsResults,
                      jacobian::Matrix{Float64},
                      ws::LinearRationalExpectationsWs)
-    ids = ws.indices
+    ids = ws.ids
     @views @inbounds begin
         # static rows are at the top of the QR transformed Jacobian matrix
-        # B_s,s
-        # fill!(ws.b10, 0.0)
         stat_r = 1:n_static(ids)
         back_r = 1:n_backward(ids)
-        # B_s,d
+        # B_s,s
+        # fill!(ws.b10, 0.0)
         ws.b10 .= jacobian[stat_r, ids.current_in_static_jacobian]
+        # B_s,d
         ws.b11[:, ids.current_in_dynamic] .= jacobian[stat_r, ids.current_in_dynamic_jacobian]
         # A_s
-        ws.temp1 .= jacobian[stat_r, n_backward(ids) + n_current(ids) .+ (1:n_forward(ids))]
+        ws.A_s .= jacobian[stat_r, n_backward(ids) + n_current(ids) .+ (1:n_forward(ids))]
         # C_s
-        ws.temp2 .= jacobian[stat_r, back_r]
+        ws.C_s .= jacobian[stat_r, back_r]
         # Gy.fwrd
-        ws.temp3 .= results.g1_1[ids.forward, back_r]
+        ws.Gy_forward .= results.g1_1[ids.forward, back_r]
         # Gy.dynamic
-        ws.temp4 .= results.g1_1[ids.dynamic, back_r]
-        # ws.temp2 = B_s,d*Gy.dynamic + C_s
-        mul!(ws.temp2, ws.b11, ws.temp4, 1.0, 1.0)
-        # ws.temp6 = A_s*Gy.fwrd*gs1
-        mul!(ws.temp6, ws.temp1, ws.temp3)
-        mul!(ws.temp2, ws.temp6, results.gs1, -1.0, -1.0)
-        # ws.temp3 = B_s,s\ws.temp2
+        ws.Gy_dynamic .= results.g1_1[ids.dynamic, back_r]
+        # ws.C_s = B_s,d*Gy.dynamic + C_s
+        
+        mul!(ws.C_s, ws.b11, ws.Gy_dynamic, 1.0, 1.0)
+        # ws.temp = A_s*Gy.fwrd*gs1
+        mul!(ws.temp, ws.A_s, ws.Gy_forward)
+        mul!(ws.C_s, ws.temp, results.gs1, -1.0, -1.0)
+        # ws.Gy_forward = B_s,s\ws.C_s
         
         lu_t = LU(factorize!(ws.linsolve_static_ws, ws.b10)...)
-        ldiv!(lu_t, ws.temp2)
+        ldiv!(lu_t, ws.C_s)
         
-        results.g1[ids.static, back_r] .= ws.temp2
+        results.g1[ids.static, back_r] .= ws.C_s
     end
     return results.g1, jacobian
-end
-
-function get_abc!(ws::LinearRationalExpectationsWs,
-                  jacobian::AbstractMatrix{Float64})
-    fill!(ws.a, 0.0)
-    fill!(ws.b, 0.0)
-    fill!(ws.c, 0.0)
-
-    ids   = ws.indices
-    dyn_r = n_static(ids) .+ (1:n_dynamic(ids))
-    @views @inbounds begin
-        ws.a[:, ids.forward_in_dynamic]  .= jacobian[dyn_r, n_backward(ids) + n_current(ids) .+ (1:n_forward(ids))]
-        ws.b[:, ids.current_in_dynamic]  .= jacobian[dyn_r, ids.current_in_dynamic_jacobian]
-        ws.c[:, ids.backward_in_dynamic] .= jacobian[dyn_r, 1:n_backward(ids)]
-    end
-    return ws.a, ws.b, ws.c
-end
-
-function get_de!(ws::LinearRationalExpectationsWs,
-                 jacobian::AbstractMatrix{Float64})
-    fill!(ws.d, 0.0)
-    fill!(ws.e, 0.0)
-    
-    ids    = ws.indices
-    n_dyn  = n_dynamic(ids)
-    dyn_r  = 1:n_dyn
-    r      = n_static(ids) .+ dyn_r
-    both_r = 1:n_both(ids)
-    @views @inbounds begin
-        ws.d[dyn_r, ids.D_columns.D] .=     jacobian[r, ids.D_columns.jacobian]
-        ws.e[dyn_r, ids.E_columns.E] .=  .- jacobian[r, ids.E_columns.jacobian]
-        for i = both_r 
-            k = n_dyn + i
-            ws.d[k, ids.UD_columns[i]] = 1.0
-            ws.e[k, ids.UE_columns[i]] = 1.0
-        end
-    end
-    return ws.d, ws.e
 end
 
 function make_AGplusB!(AGplusB::AbstractMatrix{Float64},
@@ -349,12 +394,12 @@ function make_AGplusB!(AGplusB::AbstractMatrix{Float64},
                           B::AbstractMatrix{Float64},
                           ws::LinearRationalExpectationsWs)
     fill!(AGplusB, 0.0)
-    ids = ws.indices
+    ids = ws.ids
     @views @inbounds begin
         AGplusB[:, ids.current] .= B
-        ws.temp3 .= G[ids.forward, :]
-        mul!(ws.temp7, A, ws.temp3)
-        AGplusB[:, ids.backward] .+= ws.temp7
+        ws.Gy_forward .= G[ids.forward, :]
+        mul!(ws.AGplusB_backward, A, ws.Gy_forward)
+        AGplusB[:, ids.backward] .+= ws.AGplusB_backward
         return AGplusB
     end
     
@@ -374,8 +419,8 @@ function solve_for_derivatives_with_respect_to_shocks!(results::LinearRationalEx
         linsolve_core_no_lu!(results.f1g1plusf2, results.g1_3, ws)
     end
     =#
-    if n_exogenous(ws.indices) > 0
-        results.g1_2 .= .-view(jacobian, :, ws.indices.exogenous)
+    if n_exogenous(ws.ids) > 0
+        results.g1_2 .= .-view(jacobian, :, ws.ids.exogenous)
         
 #        if ws.serially_correlated_exogenous
             # TO BE DONE
@@ -387,64 +432,33 @@ function solve_for_derivatives_with_respect_to_shocks!(results::LinearRationalEx
 end
      
 function first_order_solver!(results::LinearRationalExpectationsResults,
-                             algo::String,
                              jacobian::AbstractMatrix{Float64},
                              options::LinearRationalExpectationsOptions,
                              ws::LinearRationalExpectationsWs)
                              
     remove_static!(jacobian, ws)
-    ids = ws.indices
+    ids = ws.ids
     
     n_back    = n_backward(ids)
     n_cur     = n_current(ids)
-    back_r    = 1:n_back
     forward_r = 1:n_forward(ids)
     current_r = 1:n_cur
     back      = ids.backward
-    back_d    = ids.backward_in_dynamic
-    dyn       = ids.dynamic
-    pur_for   = ids.purely_forward
     
     @views @inbounds begin
-        if algo == "CR"
-            ws.a, ws.b, ws.c = get_abc!(ws, jacobian)
-            
-            cyclic_reduction!(ws.x, ws.c, ws.b, ws.a, ws.solver_ws,
-                              options.cyclic_reduction.tol, options.cyclic_reduction.maxiter)
-                              
-            results.gs1[:, back_r]  .= ws.x[back_d, back_d]
-            results.g1[dyn, back_r] .= ws.x[:, back_d]
-            
-        elseif algo == "GS"
-            ws.d, ws.e = get_de!(ws, jacobian)
-            try
-                gs_solver!(ws.solver_ws, ws.d, ws.e, n_backward(ws.indices),
-                           options.generalized_schur.criterium)
-            catch e
-                resize!(results.eigenvalues, length(ws.solver_ws.schurws.eigen_values))
-                copy!(results.eigenvalues, ws.solver_ws.eigen_values)
-                rethrow(e)
-            end
-
-            results.gs1                 .= ws.solver_ws.g1
-            results.g1[back, back_r]    .= ws.solver_ws.g1[back_r, back_r]
-            results.g1[pur_for, back_r] .= ws.solver_ws.g2[ids.E_columns.E[n_backward(ids) .+ (1:(n_forward(ids) - n_both(ids)))] .- n_backward(ids), :]
-            
-            resize!(results.eigenvalues, length(ws.solver_ws.schurws.eigen_values))
-            results.eigenvalues .= ws.solver_ws.schurws.eigen_values
-        else
-            error("Algorithm $algo not recognized")
-        end
+        copy_jacobian!(ws.solver_ws, jacobian)
+        results.g1, results.gs1 = solve_g1!(results, ws.solver_ws, options)
         if n_static(ids) > 0
             results.g1, jacobian = add_static!(results, jacobian, ws)
         end
-        #    A = view(jacobian, :, n_backward(ws.indices) + ws.current_nbr .+ (1:ws.forward_nbr))
-        #    B = view(jacobian, :, n_backward(ws.indices) .+ ws.indices.current)
-        ws.temp8[:, forward_r] .= jacobian[:, n_back + n_cur .+ forward_r]
-        ws.temp9[:, current_r] .= jacobian[:, n_back .+ current_r]
+        #    A = view(jacobian, :, n_backward(ws.ids) + ws.current_nbr .+ (1:ws.forward_nbr))
+        #    B = view(jacobian, :, n_backward(ws.ids) .+ ws.ids.current)
+        ws.jacobian_forward[:, forward_r] .= jacobian[:, n_back + n_cur .+ forward_r]
+        ws.jacobian_current[:, current_r] .= jacobian[:, n_back .+ current_r]
         
-        ws.AGplusB = make_AGplusB!(ws.AGplusB, ws.temp8, results.g1_1, ws.temp9, ws)        
+        ws.AGplusB = make_AGplusB!(ws.AGplusB, ws.jacobian_forward, results.g1_1, ws.jacobian_current, ws)        
         solve_for_derivatives_with_respect_to_shocks!(results, jacobian, ws)
+        
         results.hs1  .= results.g1_2[back, :]
         results.gns1 .= results.g1_1[ids.non_backward, :]
         results.hns1 .= results.g1_2[ids.non_backward, :]
