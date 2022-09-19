@@ -464,6 +464,3 @@ function first_order_solver!(results::LinearRationalExpectationsResults,
         results.hns1 .= results.g1_2[ids.non_backward, :]
     end
 end
-
-
-
