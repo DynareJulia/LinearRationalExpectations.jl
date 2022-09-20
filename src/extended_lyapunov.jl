@@ -14,7 +14,7 @@ struct LyapdWs
     dgees_ws::SchurWs
     linsolve_ws1::LUWs
     linsolve_ws2::LUWs
-    function LyapdWs(n::Int64)
+    function LyapdWs(n::Int)
         AA = Matrix{Float64}(undef, n, n)
         AAtemp = similar(AA, n, n)
         AA2 = similar(AA, 2*n, 2*n)
@@ -36,7 +36,7 @@ end
 function solve_one_row!(X::AbstractMatrix{Float64},
                         A::AbstractMatrix{Float64},
                         B::AbstractMatrix{Float64},
-                        n::Int64, row::Int64, ws::LyapdWs)
+                        n::Int, row::Int, ws::LyapdWs)
     α = A[row, row]
     vA = view(A, 1:row, 1:row)
     vAA = view(ws.AAtemp, 1:row, 1:row)
@@ -59,7 +59,7 @@ end
 function solve_two_rows!(X::AbstractMatrix{Float64},
                          A::AbstractMatrix{Float64},
                          B::AbstractMatrix{Float64},
-                         n::Int64, row::Int64, ws::LyapdWs)
+                         n::Int, row::Int, ws::LyapdWs)
     @inbounds begin
         α11, α21, α12, α22 = A[(row - 1):row, (row - 1):row]
         l2 = 1

@@ -1,21 +1,17 @@
 algo = "GS"
 endogenous_nbr = 6
 exogenous_nbr = 3
-exogenous_deterministic_nbr = 0
 forward_indices = collect(1:2)
 current_indices = collect(1:6)
 backward_indices = collect(4:6)
-both_indices = Vector{Int64}(undef, 0)
+both_indices = Vector{Int}(undef, 0)
 static_indices = [3]
 
 lre_ws = LinearRationalExpectationsWs(algo,
                                   endogenous_nbr,
-                                  exogenous_nbr,
-                                  exogenous_deterministic_nbr,
                                   forward_indices,
                                   current_indices,
                                   backward_indices,
-                                  both_indices,
                                   static_indices)
 
 state_nbr = length(backward_indices)
@@ -34,10 +30,10 @@ function test_variance_matrices()
         nonstationary = any(abs.(eigen(A[backward_indices, backward_indices]).values) .> 1.0)
     end
     A1 = A[backward_indices, backward_indices]
-    A2 = A[lre_ws.non_backward_indices, lre_ws.backward_indices]
+    A2 = A[lre_ws.ids.non_backward, lre_ws.ids.backward]
     B = rand(endogenous_nbr, exogenous_nbr)
     B1 = B[backward_indices, :]
-    B2 = B[lre_ws.non_backward_indices, :]
+    B2 = B[lre_ws.ids.non_backward, :]
     Σe = randn(exogenous_nbr, exogenous_nbr)
     Σe = transpose(Σe)*Σe
     Σy = zeros(endogenous_nbr, endogenous_nbr)
@@ -57,21 +53,17 @@ end
 endogenous_nbr = 8
 exogenous_nbr = 3
 
-exogenous_deterministic_nbr = 0
 forward_indices = collect(1:2)
 current_indices = collect(1:8)
 backward_indices = collect(4:8)
-both_indices = Vector{Int64}(undef, 0)
+both_indices = Vector{Int}(undef, 0)
 static_indices = [3]
 
 lre_ws = LinearRationalExpectationsWs(algo,
-                                  endogenous_nbr,
                                   exogenous_nbr,
-                                  exogenous_deterministic_nbr,
                                   forward_indices,
                                   current_indices,
                                   backward_indices,
-                                  both_indices,
                                   static_indices)
 
 state_nbr = length(backward_indices)
@@ -100,11 +92,11 @@ function test_variance_lre()
     end
 
     A1 = A[backward_indices, backward_indices]
-    A2 = A[lre_ws.non_backward_indices, backward_indices]
+    A2 = A[lre_ws.ids.non_backward, backward_indices]
     B = rand(endogenous_nbr, exogenous_nbr)
 
     B1 = B[backward_indices, :]
-    B2 = B[lre_ws.non_backward_indices, :]
+    B2 = B[lre_ws.ids.non_backward, :]
 
     Σe = randn(exogenous_nbr, exogenous_nbr)
     Σe = transpose(Σe)*Σe

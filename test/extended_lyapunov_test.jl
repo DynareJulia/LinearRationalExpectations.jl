@@ -35,7 +35,7 @@ for row = 2:n
 end
 
 for i = 1:100
-    s = Int64(floor(1000*rand()))
+    s = Int(floor(1000*rand()))
     Random.seed!(s)
     local n = 5
     X1 = randn(n, n)
@@ -54,7 +54,7 @@ end
 
 # with unit roots
 for i = 1:100
-    s = Int64(floor(1000*rand()))
+    s = Int(floor(1000*rand()))
     Random.seed!(s)
     local n = 2
     X1 = randn(n, n)
