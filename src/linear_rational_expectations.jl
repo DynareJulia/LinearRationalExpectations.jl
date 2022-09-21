@@ -214,7 +214,7 @@ function solve_g1!(results, ws::LinearCyclicReductionWs, options)
                       
     results.gs1[:, back_r]  .= ws.x[back_d, back_d]
     results.g1[dyn, back_r] .= ws.x[:, back_d]
-    return results.gs1, results.g1
+    return results.g1, results.gs1
 end
 
 mutable struct LinearRationalExpectationsWs
