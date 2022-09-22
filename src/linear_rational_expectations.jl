@@ -218,7 +218,6 @@ function solve_g1!(results, ws::LinearCyclicReductionWs, options)
 end
 
 mutable struct LinearRationalExpectationsWs
-    algo::String
     ids::Indices
     jacobian_static::Matrix{Float64} 
     qr_ws::QRWs
@@ -239,46 +238,49 @@ mutable struct LinearRationalExpectationsWs
     AGplusB_linsolve_ws::LUWs
     #    eye_plus_at_kron_b_ws::EyePlusAtKronBWs
     
-    function LinearRationalExpectationsWs(algo::String, args...)
-        ids = Indices(args...)
-        n_back = n_backward(ids)
-        n_stat = n_static(ids)
-        n_forw = n_forward(ids)
-        n_end  = n_endogenous(ids)
-        n_curr = n_current(ids)
-        
-        jacobian_static = Matrix{Float64}(undef, n_endogenous(ids), n_static(ids))
-         
-        qr_ws = QRWs(jacobian_static)
-        solver_ws = algo == "GS" ? LinearGsSolverWs(ids) : LinearCyclicReductionWs(ids)
-        
-        A_s = Matrix{Float64}(undef, n_stat, n_forw)
-        C_s = Matrix{Float64}(undef, n_stat, n_back)
-        Gy_forward = Matrix{Float64}(undef, n_forw, n_back)
-        
-        Gy_dynamic = Matrix{Float64}(undef, n_end - n_stat, n_back)
-        temp = Matrix{Float64}(undef, n_stat, n_back)
+end
+function LinearRationalExpectationsWs(solver_ws::Union{LinearGsSolverWs, LinearCyclicReductionWs}, ids::Indices)
+    n_back = n_backward(ids)
+    n_stat = n_static(ids)
+    n_forw = n_forward(ids)
+    n_end  = n_endogenous(ids)
+    n_curr = n_current(ids)
+    
+    jacobian_static = Matrix{Float64}(undef, n_endogenous(ids), n_static(ids))
+     
+    qr_ws = QRWs(jacobian_static)
+    
+    A_s = Matrix{Float64}(undef, n_stat, n_forw)
+    C_s = Matrix{Float64}(undef, n_stat, n_back)
+    Gy_forward = Matrix{Float64}(undef, n_forw, n_back)
+    
+    Gy_dynamic = Matrix{Float64}(undef, n_end - n_stat, n_back)
+    temp = Matrix{Float64}(undef, n_stat, n_back)
 
-        AGplusB_backward = Matrix{Float64}(undef, n_end, n_back)
+    AGplusB_backward = Matrix{Float64}(undef, n_end, n_back)
 
-        jacobian_forward = Matrix{Float64}(undef, n_end, n_forw)
-        jacobian_current = Matrix{Float64}(undef, n_end, n_curr)
+    jacobian_forward = Matrix{Float64}(undef, n_end, n_forw)
+    jacobian_current = Matrix{Float64}(undef, n_end, n_curr)
 
-        b10 = Matrix{Float64}(undef, n_stat,n_stat)
-        b11 = Matrix{Float64}(undef, n_stat, n_end - n_stat)
-        linsolve_static_ws = LUWs(n_stat)
-        AGplusB = Matrix{Float64}(undef, n_end, n_end)
-        AGplusB_linsolve_ws = LUWs(n_end)
-        #        if m.serially_correlated_exogenous
-        #            eye_plus_at_kron_b_ws = EyePlusAtKronBWs(ma, mb, mc, 1)
-        #        else
-        #            eye_plus_at_kron_b_ws = EyePlusAtKronBWs(1, 1, 1, 1)
-        # end
+    b10 = Matrix{Float64}(undef, n_stat,n_stat)
+    b11 = Matrix{Float64}(undef, n_stat, n_end - n_stat)
+    linsolve_static_ws = LUWs(n_stat)
+    AGplusB = Matrix{Float64}(undef, n_end, n_end)
+    AGplusB_linsolve_ws = LUWs(n_end)
+    LinearRationalExpectationsWs(ids, jacobian_static, qr_ws, solver_ws, A_s, C_s, Gy_forward, Gy_dynamic, 
+        temp, AGplusB_backward, jacobian_forward, jacobian_current, b10, b11, AGplusB,
+        linsolve_static_ws, AGplusB_linsolve_ws)
+end
 
-        new(algo, ids, jacobian_static, qr_ws, solver_ws, A_s, C_s, Gy_forward, Gy_dynamic, 
-            temp, AGplusB_backward, jacobian_forward, jacobian_current, b10, b11, AGplusB,
-            linsolve_static_ws, AGplusB_linsolve_ws)
-    end
+function LinearRationalExpectationsWs(algo::String, ids::Indices)
+    solver_ws = algo == "GS" ? LinearGsSolverWs(ids) : LinearCyclicReductionWs(ids)
+    return LinearRationalExpectationsWs(solver_ws, ids)
+end
+
+function LinearRationalExpectationsWs(algo::String, args...)
+    ids = Indices(args...)
+    solver_ws = algo == "GS" ? LinearGsSolverWs(ids) : LinearCyclicReductionWs(ids)
+    return LinearRationalExpectationsWs(solver_ws, ids)
 end
 
 Base.@kwdef struct CyclicReductionOptions

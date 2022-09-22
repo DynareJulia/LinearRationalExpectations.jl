@@ -58,25 +58,27 @@ struct VarianceWs
     nonstationary_ws::Vector{NonstationaryVarianceWs}
     lre_ws::LinearRationalExpectationsWs
     lyapd_ws::LyapdWs
-    function VarianceWs(var_nbr::Int, state_nbr::Int,
-                           shock_nbr::Int, lre_ws::LinearRationalExpectationsWs)
-        nonstate_nbr = var_nbr - state_nbr
-        B1S = Matrix{Float64}(undef, state_nbr, shock_nbr)
-        B1SB1 = Matrix{Float64}(undef, state_nbr, state_nbr)
-        A2S = Matrix{Float64}(undef, nonstate_nbr, state_nbr)
-        B2S = Matrix{Float64}(undef, nonstate_nbr, shock_nbr)
-        Σ_s_s = Matrix{Float64}(undef, state_nbr, state_nbr)
-        Σ_ns_s = Matrix{Float64}(undef, nonstate_nbr, state_nbr)
-        Σ_ns_ns = Matrix{Float64}(undef, nonstate_nbr, nonstate_nbr)
-        stationary_variables = Vector{Bool}(undef, var_nbr)
-        nonstationary_ws = Vector{NonstationaryVarianceWs}(undef, 0)
-        lyapd_ws = LyapdWs(state_nbr)
-        new(B1S, B1SB1, A2S, B2S, Σ_s_s, Σ_ns_s, Σ_ns_ns,
-            stationary_variables,
-            nonstationary_ws,
-            lre_ws, lyapd_ws)
-    end
 end
+function VarianceWs(var_nbr::Int, lyapd_ws::LyapdWs,
+                    shock_nbr::Int, lre_ws::LinearRationalExpectationsWs)
+    state_nbr = size(lyapd_ws.AA, 1)
+    nonstate_nbr = var_nbr - state_nbr
+    B1S = Matrix{Float64}(undef, state_nbr, shock_nbr)
+    B1SB1 = Matrix{Float64}(undef, state_nbr, state_nbr)
+    A2S = Matrix{Float64}(undef, nonstate_nbr, state_nbr)
+    B2S = Matrix{Float64}(undef, nonstate_nbr, shock_nbr)
+    Σ_s_s = Matrix{Float64}(undef, state_nbr, state_nbr)
+    Σ_ns_s = Matrix{Float64}(undef, nonstate_nbr, state_nbr)
+    Σ_ns_ns = Matrix{Float64}(undef, nonstate_nbr, nonstate_nbr)
+    stationary_variables = Vector{Bool}(undef, var_nbr)
+    nonstationary_ws = Vector{NonstationaryVarianceWs}(undef, 0)
+    VarianceWs(B1S, B1SB1, A2S, B2S, Σ_s_s, Σ_ns_s, Σ_ns_ns,
+        stationary_variables,
+        nonstationary_ws,
+        lre_ws, lyapd_ws)
+end
+VarianceWs(var_nbr::Int, state_nbr::Int, shock_nbr::Int, lre_ws::LinearRationalExpectationsWs) = 
+    VarianceWs(var_nbr, LyapdWs(state_nbr), shock_nbr, lre_ws)
 
 function make_stationary_variance!(Σy::Matrix{Float64},
                                    Σ_s_s::Matrix{Float64},
