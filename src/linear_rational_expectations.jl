@@ -157,7 +157,7 @@ function solve_g1!(results, ws::LinearGsSolverWs, options)
         solve!(ws, options.generalized_schur.criterium)
     catch e
         resize!(results.eigenvalues, length(ws.solver_ws.schurws.eigen_values))
-        copy!(results.eigenvalues, ws.solver_ws.eigen_values)
+        copy!(results.eigenvalues, ws.solver_ws.schurws.eigen_values)
         rethrow(e)
     end
 
