@@ -1,3 +1,7 @@
+0.5.1
+=====
+- check for static variables before removing them
+
 0.5.0
 =====
 - API update
