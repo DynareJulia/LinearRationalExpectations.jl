@@ -438,8 +438,10 @@ function first_order_solver!(results::LinearRationalExpectationsResults,
                              options::LinearRationalExpectationsOptions,
                              ws::LinearRationalExpectationsWs)
                              
-    remove_static!(jacobian, ws)
     ids = ws.ids
+    if n_static(ids) > 0
+        remove_static!(jacobian, ws)
+    end
     
     n_back    = n_backward(ids)
     n_cur     = n_current(ids)
