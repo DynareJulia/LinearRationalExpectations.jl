@@ -1,3 +1,7 @@
+0.5.2
+=====
+- fix MKL compatibilty in remove_static!
+
 0.5.1
 =====
 - check for static variables before removing them
