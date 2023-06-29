@@ -221,6 +221,7 @@ mutable struct LinearRationalExpectationsWs
     ids::Indices
     jacobian_static::Matrix{Float64} 
     qr_ws::QRWs
+    ormqr_ws::QROrmWs
    
     solver_ws::Union{LinearGsSolverWs, LinearCyclicReductionWs}
     A_s::Matrix{Float64}
@@ -244,11 +245,15 @@ function LinearRationalExpectationsWs(solver_ws::Union{LinearGsSolverWs, LinearC
     n_stat = n_static(ids)
     n_forw = n_forward(ids)
     n_end  = n_endogenous(ids)
+    n_exo  = n_exogenous(ids)
     n_curr = n_current(ids)
+    n = n_back + n_curr + n_forw + n_exo
     
     jacobian_static = Matrix{Float64}(undef, n_endogenous(ids), n_static(ids))
      
     qr_ws = QRWs(jacobian_static)
+    @show n
+    ormqr_ws = QROrmWs(qr_ws, 'L', 'T', jacobian_static, zeros(n_end, n))
     
     A_s = Matrix{Float64}(undef, n_stat, n_forw)
     C_s = Matrix{Float64}(undef, n_stat, n_back)
@@ -267,9 +272,11 @@ function LinearRationalExpectationsWs(solver_ws::Union{LinearGsSolverWs, LinearC
     linsolve_static_ws = LUWs(n_stat)
     AGplusB = Matrix{Float64}(undef, n_end, n_end)
     AGplusB_linsolve_ws = LUWs(n_end)
-    LinearRationalExpectationsWs(ids, jacobian_static, qr_ws, solver_ws, A_s, C_s, Gy_forward, Gy_dynamic, 
-        temp, AGplusB_backward, jacobian_forward, jacobian_current, b10, b11, AGplusB,
-        linsolve_static_ws, AGplusB_linsolve_ws)
+    LinearRationalExpectationsWs(ids, jacobian_static, qr_ws, ormqr_ws, solver_ws, A_s,
+                                 C_s, Gy_forward, Gy_dynamic, 
+                                 temp, AGplusB_backward, jacobian_forward, jacobian_current,
+                                 b10, b11, AGplusB,
+                                 linsolve_static_ws, AGplusB_linsolve_ws)
 end
 
 function LinearRationalExpectationsWs(algo::String, ids::Indices)
@@ -346,7 +353,9 @@ function remove_static!(jacobian::Matrix{Float64},
                         ws::LinearRationalExpectationsWs)
     ws.jacobian_static .= view(jacobian, :, ws.ids.current_in_static_jacobian)
     geqrf!(ws.qr_ws, ws.jacobian_static)
-    ormqr!(ws.qr_ws, 'L', 'T', ws.jacobian_static, jacobian)
+    @show size(jacobian)
+    @show size(ws.ormqr_ws.work)
+    ormqr!(ws.ormqr_ws, 'L', 'T', ws.jacobian_static, jacobian)
 end
 
 """
