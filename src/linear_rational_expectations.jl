@@ -353,8 +353,6 @@ function remove_static!(jacobian::Matrix{Float64},
                         ws::LinearRationalExpectationsWs)
     ws.jacobian_static .= view(jacobian, :, ws.ids.current_in_static_jacobian)
     geqrf!(ws.qr_ws, ws.jacobian_static)
-    @show size(jacobian)
-    @show size(ws.ormqr_ws.work)
     ormqr!(ws.ormqr_ws, 'L', 'T', ws.jacobian_static, jacobian)
 end
 
