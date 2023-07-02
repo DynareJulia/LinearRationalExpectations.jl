@@ -252,7 +252,6 @@ function LinearRationalExpectationsWs(solver_ws::Union{LinearGsSolverWs, LinearC
     jacobian_static = Matrix{Float64}(undef, n_endogenous(ids), n_static(ids))
      
     qr_ws = QRWs(jacobian_static)
-    @show n
     ormqr_ws = QROrmWs(qr_ws, 'L', 'T', jacobian_static, zeros(n_end, n))
     
     A_s = Matrix{Float64}(undef, n_stat, n_forw)
