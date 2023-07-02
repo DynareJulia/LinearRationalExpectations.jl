@@ -1,3 +1,7 @@
+0.5.3
+=====
+- remove debugging instructions
+
 0.5.2
 =====
 - fix MKL compatibilty in remove_static!
