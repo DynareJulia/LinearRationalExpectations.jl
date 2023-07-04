@@ -363,27 +363,45 @@ function autocovariance!(av::Vector{<:AbstractVector{T}},
                          lre_results::LinearRationalExpectationsResults,
                          S1a::AbstractMatrix{T},
                          S1b::AbstractMatrix{T},
-                         S2::AbstractMatrix{T},
+                         S2a::AbstractMatrix{T},
+                         S2b::AbstractMatrix{T},
                          backward_indices::Vector{Int},
+                         non_backward_indices::Vector{Int},
                          stationary_variables::Vector{Bool}) where T <: Real
     backward_stationary_indices = [i for i in backward_indices if stationary_variables[i]]
+    non_backward_stationary_indices = [i for i in non_backward_indices if stationary_variables[i]]
+    backward_stationary_indices2 = [i for (i, j) in enumerate(backward_indices) if stationary_variables[j]]
+    non_backward_stationary_indices2 = [i for (i, j) in enumerate(non_backward_indices) if stationary_variables[j]]
+    
     variance = lre_results.endogenous_variance
     nbsi = length(backward_stationary_indices)
-    vS1a = view(S1a, 1:nbsi, :)
-    vS1b = view(S1b, 1:nbsi, :)
-    vS1a .= view(variance, backward_stationary_indices, :)
+    nnbsi = length(non_backward_stationary_indices)
+    vS1a = view(S1a, 1:nbsi, 1:nbsi)
+    vS1b = view(S1b, 1:nbsi, 1:nbsi)
+    vS1a .= view(variance,
+                 backward_stationary_indices,
+                 backward_stationary_indices)
+    vS2a = view(S2a, 1:nnbsi, 1:nbsi) 
+    vS2b = view(S2a, 1:nnbsi, 1:nnbsi) 
+    vgs1 = view(lre_results.gs1,
+                backward_stationary_indices2,
+                backward_stationary_indices2)
+    vgns1 = view(lre_results.gns1,
+                 non_backward_stationary_indices2,
+                 backward_stationary_indices2)
     n = length(av[1])
-    nb = length(backward_indices)
     for i in 1:length(av)
-        mul!(vS1b, lre_results.gs1, vS1a)
-        mul!(S2, lre_results.gns1, vS1a)
+        mul!(vS1b, vgs1, vS1a)
+        mul!(vS2a, vgns1, vS1b)
+        mul!(vS2b, vS2a, transpose(vgns1))
+
         k1 = k2 = 1
         for j = 1:n
-            if k1 <= nb && j == backward_indices[k1]
-                av[i][j] = vS1b[k1, j]
+            if k1 <= nbsi && j == backward_stationary_indices2[k1]
+                av[i][j] = vS1b[k1, k1]
                 k1 += 1
             else
-                av[i][j] = S2[k2, j]
+                av[i][j] = vS2b[k2, k2]
                 k2 += 1
             end
         end
@@ -396,17 +414,18 @@ function autocorrelation!(ar::Vector{<:AbstractVecOrMat{T}},
                           lre_results::LinearRationalExpectationsResults,
                           S1a::AbstractMatrix{T},
                           S1b::AbstractMatrix{T},
-                          S2::AbstractMatrix{T},
+                          S2a::AbstractMatrix{T},
+                          S2b::AbstractMatrix{T},
                           backward_indices::Vector{Int},
                           stationary_variables::Vector{Bool}
                           ) where T <: Real
-    autocovariance!(ar, lre_results, S1a, S1b, S2, backward_indices, stationary_variables)
+    variance = lre_results.endogenous_variance
+    endogenous_nbr = size(variance, 1)
+    non_backward_indices = collect([i for i in 1:endogenous_nbr if !(i in backward_indices)])
+    autocovariance!(ar, lre_results, S1a, S1b, S2a, S2b, backward_indices, non_backward_indices, stationary_variables)
     n = length(stationary_variables)
-    dv = Vector{Float64}(undef, n)
-    for i = 1:n
-        dv[i] = lre_results.endogenous_variance[i, i]
-    end
-    autocorrelation!(ar, dv) 
+    dv = [variance[i, i] for i in 1:endogenous_nbr if stationary_variables[i]]
+    autocorrelation!(ar, dv)
 end
 
 """
