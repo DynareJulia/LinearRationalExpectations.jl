@@ -1,3 +1,7 @@
+0.5.4
+=====
+- fixing autocorrelation for nonstationary models
+
 0.5.3
 =====
 - remove debugging instructions
