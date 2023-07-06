@@ -144,31 +144,34 @@ end
     @test C .* sd .* transpose(sd) ≈ Sigma_y
 
     order = 4
-    backward_indices = [1, 3]
-    ns = length(backward_indices)
-    A0 = rand(n,ns)
-    lre_results = LinearRationalExpectationsResults(n, 2, ns)
-    lre_results.gs1 .= A0[[1, 3], :]
-    lre_results.gns1 .= A0[[2, (4:n)...], :]
+    backward_indices = [1, 3, 5]
+    nb = length(backward_indices)
+    stationary_indices = [2, 3, 5, 7]
+    stationary_variables = repeat([false], n)
+    stationary_variables[stationary_indices] .= true
+    nsb = length(intersect(stationary_indices, backward_indices))
+    A0 = rand(n, nb)
+    lre_results = LinearRationalExpectationsResults(n, 2, nb)
+    lre_results.gs1[:, :] .= A0[[1, 3, 5], :]
+    lre_results.gns1[:, :] .= A0[[2, 4, (6:n)...], :]
     lre_results.endogenous_variance .= Sigma_y
-    stationary_variables = [true, true, true, true, false, false, false, false, false, false]
+
     nstat = count(stationary_variables)
-    AA = [zeros(nstat,nstat) for i = 1:order]
+    AA = [zeros(nstat, nstat) for i = 1:order]
     S1a = view(lre_results.endogenous_variance, backward_indices, :)
-    LinearRationalExpectations.autocovariance!(AA, lre_results, zeros(ns, n), zeros(ns, n), zeros(n - ns, n), backward_indices, stationary_variables)
-    A = A0[1:4, :]
-    A1 = A[[1, 3], :]
-    Sigma_ys = Sigma_y[[1, 3], 1:4]
-    @test AA[1]  ≈ A*Sigma_ys
-    @test AA[2]  ≈ A*A1*Sigma_ys
-    @test AA[3]  ≈ A*A1*A1*Sigma_ys
+    LinearRationalExpectations.autocovariance!(AA, lre_results, zeros(nb, n), zeros(nb, n), zeros(n - nb, n), backward_indices, stationary_variables)
+    A = A0[stationary_indices, 2:3]
+    A1 = A[[2, 3], :]
+    Sigma_ys = Sigma_y[[3, 5], stationary_indices]
+    @test AA[1]  ≈ A*Sigma_ys         
+    @test AA[2]  ≈ A*A1*Sigma_ys      
+    @test AA[3]  ≈ A*A1*A1*Sigma_ys   
     @test AA[4]  ≈ A*A1*A1*A1*Sigma_ys
-   
+
     VV = [zeros(nstat) for i = 1:order]
-    LinearRationalExpectations.autocovariance!(VV, lre_results, zeros(ns, n), zeros(ns, n), zeros(n - ns, n), backward_indices, stationary_variables)
-    @test VV[1]  ≈ diag(AA[1])
-    @test VV[2]  ≈ diag(AA[2])
-    @test VV[3]  ≈ diag(AA[3])
-    @test VV[4]  ≈ diag(AA[4])
-   
+    LinearRationalExpectations.autocovariance!(VV, lre_results, zeros(nb, n), zeros(nb, n), zeros(n - nb, n), backward_indices, stationary_variables)
+    @test VV[1]  ≈ diag(A*Sigma_ys)
+    @test VV[2]  ≈ diag(A*A1*Sigma_ys)
+    @test VV[3]  ≈ diag(A*A1*A1*Sigma_ys)
+    @test VV[4]  ≈ diag(A*A1*A1*A1*Sigma_ys)
 end
