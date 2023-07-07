@@ -1,3 +1,7 @@
+0.5.5
+=====
+- fixing autocovariance for general patterns of stationary variables
+
 0.5.4
 =====
 - fixing autocorrelation for nonstationary models
