@@ -11,7 +11,7 @@ struct LyapdWs
     XX::Vector{Float64}
     nonstationary_variables::Vector{Bool}
     nonstationary_trends::Vector{Bool}
-    dgees_ws::SchurWs
+    dgees_ws::SchurWs{Float64}
     linsolve_ws1::LUWs
     linsolve_ws2::LUWs
     function LyapdWs(n::Int)
@@ -100,9 +100,9 @@ end
 """
     function lyapd(Σ, A, B, ws) solves equation Σ - A*Σ*A' = B
 """
-function extended_lyapd!(Σ::AbstractMatrix{Float64},
-                         A::AbstractMatrix{Float64},
-                         B::AbstractMatrix{Float64},
+function extended_lyapd!(Σ::StridedMatrix{Float64},
+                         A::StridedMatrix{Float64},
+                         B::StridedMatrix{Float64},
                          ws::LyapdWs)
     n = size(A, 1)
     copy!(ws.AA, A)
