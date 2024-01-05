@@ -11,19 +11,23 @@ struct NonstationaryVarianceWs
     state_stationary_variables::Vector{Bool}
     nonstate_stationary_variables::Vector{Bool}
     function NonstationaryVarianceWs(endogenous_nbr::Int,
-                                        exogenous_nbr::Int,
-                                        state_nbr::Int,
-                                        nonstationary_variables::Vector{Bool},
-                                        A2::Matrix{Float64})
+                                     exogenous_nbr::Int,
+                                     state_nbr::Int,
+                                     lyapd_ws::LyapdWs,
+                                     A2::Matrix{Float64},
+                                     A2Q::Matrix{Float64})
+        nonstationary_variables = lyapd_ws.nonstationary_variables
+        nonstationary_trends = lyapd_ws.nonstationary_trends
         nonstate_nbr = endogenous_nbr - state_nbr
         state_stationary_variables = Vector{Bool}(undef, state_nbr)
         nonstate_stationary_variables = Vector{Bool}(undef, nonstate_nbr)
         state_stationary_variables .= .!nonstationary_variables
         state_stationary_nbr = count(state_stationary_variables)
         fill!(nonstate_stationary_variables, true)
+        mul!(A2Q, A2, lyapd_ws.dgees_ws.vs)
         for i = 1:nonstate_nbr
             for j = 1:state_nbr
-                if nonstationary_variables[j] && abs(A2[i, j]) > 1e-10
+                if nonstationary_trends[j] && abs(A2Q[i, j]) > 1e-10
                     nonstate_stationary_variables[i] = false
                     break
                 end
@@ -197,11 +201,13 @@ function compute_variance!(Σy::Matrix{Float64},
         state_nbr = n_backward(lre_ws.ids)
         state_indices = lre_ws.ids.backward
         if length(ws.nonstationary_ws) == 0
+            # uses ws.Σ_ns_s as temporary storage
             nonstationary_ws = NonstationaryVarianceWs(n_endogenous(lre_ws.ids),
                                                        n_exogenous(lre_ws.ids),
                                                        n_backward(lre_ws.ids),
-                                                       ws.lyapd_ws.nonstationary_variables,
-                                                       A2)
+                                                       ws.lyapd_ws,
+                                                       A2,
+                                                       ws.Σ_ns_s)
             push!(ws.nonstationary_ws, nonstationary_ws)
         else
             nonstationary_ws = ws.nonstationary_ws[1]
