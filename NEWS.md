@@ -1,3 +1,7 @@
+0.5.7
+=====
+- adding support for purely backward linear models
+
 0.5.6
 =====
 - fixing variance of stationary variables in an otherwise nonstationary model
