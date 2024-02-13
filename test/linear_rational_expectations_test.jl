@@ -1,6 +1,7 @@
 using Random
 using LinearRationalExpectations: n_backward, n_forward, n_both, n_static, n_dynamic, n_current, n_exogenous
 
+# Regular linear rational expectations model
 function make_jacobian(ws)
     jacobian_orig = zeros(ws.ids.n_endogenous,
                           n_backward(ws.ids)
@@ -180,4 +181,26 @@ LRE.copy_jacobian!(ws.solver_ws,  jacobian)
 @test ws.solver_ws.b[:, [2, 3, 4, 5, 7, 8]] == jacobian[3:end, [6, 7, 8, 9, 11, 13]]
 @test ws.solver_ws.c[:, [1, 4, 6, 7, 8]] == jacobian[3:end, 1:5]
 
+# purely backward model
 
+endogenous_nbr = 10
+exogenous_nbr = 3
+forward_indices = Int[]
+current_indices = collect(1:10)
+backward_indices = [1, 4, 6, 7, 9]
+both_indices = Int[]
+static_indices = [2, 3, 5, 8, 10]
+jacobian = randn(endogenous_nbr, length(backward_indices) + endogenous_nbr + exogenous_nbr)
+
+
+ws = LinearRationalExpectationsWs("GS",
+                                  exogenous_nbr,
+                                  forward_indices,
+                                  current_indices,
+                                  backward_indices,
+                                  static_indices)
+results = LinearRationalExpectationsResults(endogenous_nbr, exogenous_nbr, length(backward_indices))
+LRE.first_order_solver!(results, jacobian, options, ws)
+@test results.g1_1 ≈ -jacobian[:, 6:15]\jacobian[:, 1:5]
+@test results.g1_2 ≈ -jacobian[:, 6:15]\jacobian[:, 16:18]
+@test results.gs1 == results.g1_1[backward_indices, :]

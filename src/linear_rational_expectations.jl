@@ -438,7 +438,7 @@ function solve_for_derivatives_with_respect_to_shocks!(results::LinearRationalEx
 #        end
     end
 end
-     
+
 function first_order_solver!(results::LinearRationalExpectationsResults,
                              jacobian::AbstractMatrix{Float64},
                              options::LinearRationalExpectationsOptions,
@@ -457,20 +457,37 @@ function first_order_solver!(results::LinearRationalExpectationsResults,
     
     @views @inbounds begin
         copy_jacobian!(ws.solver_ws, jacobian)
-        results.g1, results.gs1 = solve_g1!(results, ws.solver_ws, options)
-        if n_static(ids) > 0
-            results.g1, jacobian = add_static!(results, jacobian, ws)
-        end
-        #    A = view(jacobian, :, n_backward(ws.ids) + ws.current_nbr .+ (1:ws.forward_nbr))
-        #    B = view(jacobian, :, n_backward(ws.ids) .+ ws.ids.current)
-        ws.jacobian_forward[:, forward_r] .= jacobian[:, n_back + n_cur .+ forward_r]
         ws.jacobian_current[:, current_r] .= jacobian[:, n_back .+ current_r]
-        
-        ws.AGplusB = make_AGplusB!(ws.AGplusB, ws.jacobian_forward, results.g1_1, ws.jacobian_current, ws)        
-        solve_for_derivatives_with_respect_to_shocks!(results, jacobian, ws)
-        
-        results.hs1  .= results.g1_2[back, :]
-        results.gns1 .= results.g1_1[ids.non_backward, :]
-        results.hns1 .= results.g1_2[ids.non_backward, :]
+        if n_forward(ids) == 0
+            if n_back == 0
+                # static model
+                nothing
+            else
+                if n_exogenous(ws.ids) > 0
+                    results.g1_1 .= .-view(jacobian, :, 1:n_back)
+                    results.g1_2 .= .-view(jacobian, :, ws.ids.exogenous)
+                    lu_t = LU(factorize!(ws.AGplusB_linsolve_ws, ws.jacobian_current)...)
+                    ldiv!(lu_t, results.g1_1)
+                    ldiv!(lu_t, results.g1_2)
+                    results.gs1 .= view(results.g1_1, back, :)
+                else
+                    results.g1_2 = []
+                end
+            end
+        else
+            results.g1, results.gs1 = solve_g1!(results, ws.solver_ws, options)
+            if n_static(ids) > 0
+                results.g1, jacobian = add_static!(results, jacobian, ws)
+            end
+
+            ws.jacobian_forward[:, forward_r] .= jacobian[:, n_back + n_cur .+ forward_r]
+            
+            ws.AGplusB = make_AGplusB!(ws.AGplusB, ws.jacobian_forward, results.g1_1, ws.jacobian_current, ws)        
+            solve_for_derivatives_with_respect_to_shocks!(results, jacobian, ws)
+        end
+    
+            results.hs1  .= results.g1_2[back, :]
+            results.gns1 .= results.g1_1[ids.non_backward, :]
+            results.hns1 .= results.g1_2[ids.non_backward, :]
     end
 end
